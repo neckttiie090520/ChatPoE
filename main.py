@@ -35,6 +35,9 @@ logging.basicConfig(
 )
 logger = logging.getLogger("poe2-chat")
 
+# Suppress pywebview/WebView2 noise (WinForms accessibility enumeration, COM threading)
+logging.getLogger("pywebview").setLevel(logging.CRITICAL)
+
 # ── Paths ──────────────────────────────────────────────────────
 THIS_DIR = Path(__file__).parent
 SETTINGS_FILE = THIS_DIR / "settings.json"
