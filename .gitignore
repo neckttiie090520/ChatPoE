@@ -1,0 +1,15 @@
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+dist/
+build/
+.env
+*.sqlite3
+settings.json
+node_modules/
+.DS_Store
+Thumbs.db
+*.bak
+exports/
+backups/

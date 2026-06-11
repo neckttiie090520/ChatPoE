@@ -1,0 +1,5 @@
+pywebview>=5.3.1
+google-genai>=1.0.0
+mcp>=0.9.0
+keyring>=25.0.0
+platformdirs>=3.0.0

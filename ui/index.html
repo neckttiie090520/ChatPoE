@@ -1,0 +1,1074 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ChatPoE</title>
+<style>
+*,*::before,*::after{margin:0;padding:0;box-sizing:border-box}
+:root{
+  --bg:#0D1117;--panel:#131922;--surface:#18202A;--surface-hover:#1E2833;
+  --border:#29323D;--border-strong:#394553;
+  --text:#E7EDF3;--text2:#A6B1BD;--muted:#778492;
+  --accent:#C9823B;--accent-hover:#DB9550;--accent-dim:rgba(201,130,59,.10);
+  --ok:#68A978;--warn:#D3A34A;--err:#C96868;--tool:#7AADCF;
+  --r:6px;--r2:8px;--r3:10px;
+  --s1:4px;--s2:8px;--s3:12px;--s4:16px;--s5:20px;--s6:24px;
+  --topbar:48px;--statusbar:26px;
+}
+body{font-family:'Segoe UI',-apple-system,system-ui,sans-serif;background:var(--bg);color:var(--text);height:100vh;display:flex;flex-direction:column;overflow:hidden;font-size:13px;line-height:1.5}
+:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+button:focus:not(:focus-visible),textarea:focus:not(:focus-visible),input:focus:not(:focus-visible),select:focus:not(:focus-visible){outline:none}
+@media(prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:.01ms!important;transition-duration:.01ms!important}}
+.sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);border:0}
+.icon{display:inline-flex;align-items:center;justify-content:center;flex-shrink:0}
+.icon svg{width:var(--is,16px);height:var(--is,16px);stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+
+/* ═══ TOP BAR ═══ */
+header.topbar{height:var(--topbar);background:var(--panel);border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;padding:0 var(--s4);flex-shrink:0;z-index:10}
+.tb-left{display:flex;align-items:center;gap:var(--s2)}
+.tb-title{font-size:13px;font-weight:600;letter-spacing:.2px}
+.tb-sub{font-size:11px;color:var(--muted);margin-left:var(--s2)}
+.tb-right{display:flex;align-items:center;gap:var(--s3);position:relative}
+
+/* Status dots */
+.sd{width:6px;height:6px;border-radius:50%;flex-shrink:0}
+.sd.g{background:var(--ok)}.sd.y{background:var(--warn);animation:pulse 1.4s ease infinite}
+.sd.r{background:var(--err)}.sd.x{background:var(--muted);opacity:.35}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.35}}
+
+.status-chip{display:flex;align-items:center;gap:5px;font-size:11px;color:var(--muted);cursor:default}
+.status-chip a{color:var(--accent);cursor:pointer;text-decoration:none}
+.status-chip a:hover{text-decoration:underline}
+
+/* Model btn */
+.mdl-btn{display:flex;align-items:center;gap:4px;padding:4px var(--s3);background:var(--surface);border:1px solid var(--border);border-radius:var(--r);color:var(--text2);font-size:12px;cursor:pointer;transition:border-color 150ms,color 150ms}
+.mdl-btn:hover{border-color:var(--border-strong);color:var(--text)}
+.ib{width:30px;height:30px;border-radius:var(--r);border:1px solid var(--border);background:transparent;color:var(--muted);cursor:pointer;display:flex;align-items:center;justify-content:center;transition:background 150ms,color 150ms,border-color 150ms}
+.ib:hover{background:var(--surface);color:var(--text2);border-color:var(--border-strong)}
+
+/* Model popover */
+.popover{display:none;position:absolute;top:calc(100% + 4px);right:0;background:var(--panel);border:1px solid var(--border);border-radius:var(--r2);width:280px;max-height:360px;overflow-y:auto;box-shadow:0 8px 24px rgba(0,0,0,.35);z-index:50;padding:var(--s2)}
+.popover.visible{display:block}
+.mdl-opt{display:flex;flex-direction:column;padding:var(--s2) var(--s3);border-radius:var(--r);cursor:pointer;transition:background 120ms;border:1px solid transparent;margin-bottom:2px}
+.mdl-opt:hover{background:var(--surface)}
+.mdl-opt.sel{background:var(--accent-dim);border-color:rgba(201,130,59,.25)}
+.mdl-opt-name{font-size:13px;font-weight:500}
+.mdl-opt-desc{font-size:11px;color:var(--muted);margin-top:1px}
+.mdl-badge{display:inline-block;font-size:10px;font-weight:600;padding:1px 5px;border-radius:3px;background:var(--accent-dim);color:var(--accent);margin-right:4px}
+
+/* ═══ MAIN ═══ */
+main.ws{flex:1;display:flex;flex-direction:column;overflow:hidden;background:var(--bg);position:relative}
+
+/* Chat */
+.chat{flex:1;overflow-y:auto;padding:var(--s4) var(--s5);scroll-behavior:smooth}
+
+/* Messages */
+.msg{margin-bottom:var(--s4);display:flex;flex-direction:column}
+.msg.user{align-items:flex-end}
+.msg.assistant{align-items:flex-start}
+
+.msg-row{display:flex;align-items:flex-start;gap:var(--s2);max-width:88%;position:relative}
+.msg.user .msg-row{flex-direction:row-reverse;max-width:70%}
+
+.msg-head{display:flex;align-items:center;gap:4px;margin-bottom:3px;padding:0 var(--s1)}
+.msg-tag{font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.6px;color:var(--muted)}
+.msg.user .msg-tag{color:var(--accent)}
+
+.msg-body{font-size:13px;line-height:1.65;padding:var(--s3);border-radius:var(--r3);border-left:2px solid transparent;position:relative}
+.msg.user .msg-body{background:var(--accent-dim);border-left-color:transparent;border-radius:var(--r3) var(--r3) 2px var(--r3);max-width:100%}
+.msg.assistant .msg-body{background:var(--surface);border-left-color:var(--border-strong);border-radius:var(--r3) var(--r3) var(--r3) 2px}
+.msg-body code{background:rgba(201,130,59,.1);padding:1px 4px;border-radius:3px;font-size:12px;color:var(--accent)}
+.msg-body .md-h3{color:var(--accent);font-size:14px;font-weight:600;margin:var(--s3) 0 var(--s2)}
+.msg-body .md-h4{color:var(--accent);font-size:13px;font-weight:600;margin:var(--s2) 0 var(--s1)}
+.msg-body .md-li{padding-left:14px;margin-bottom:2px}
+.msg-error .msg-body{background:rgba(201,104,104,.06);border-left-color:var(--err);color:var(--err)}
+
+/* Message actions */
+.msg-actions{position:absolute;top:2px;right:2px;display:flex;gap:2px;opacity:0;transition:opacity 150ms}
+.msg:hover .msg-actions,.msg-actions:focus-within{opacity:1}
+.msg-act{width:24px;height:24px;border:none;background:var(--panel);color:var(--muted);border-radius:4px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:background 120ms,color 120ms}
+.msg-act:hover{background:var(--surface);color:var(--text2)}
+
+/* Tool activity block */
+.tool-block{margin:var(--s1) 0 var(--s2);max-width:88%;background:var(--surface);border:1px solid var(--border);border-radius:var(--r2);overflow:hidden}
+.tool-block-head{display:flex;align-items:center;justify-content:space-between;padding:var(--s2) var(--s3);cursor:pointer;font-size:12px;color:var(--text2);transition:background 120ms}
+.tool-block-head:hover{background:var(--surface-hover)}
+.tool-block-summary{display:flex;align-items:center;gap:var(--s2)}
+.tool-block-toggle{font-size:11px;color:var(--muted)}
+.tool-block-body{display:none;border-top:1px solid var(--border);padding:var(--s2)}
+.tool-block.open .tool-block-body{display:block}
+.tool-row{display:flex;align-items:flex-start;gap:var(--s2);padding:var(--s1) var(--s2);font-size:12px}
+.tool-row-icon{flex-shrink:0;margin-top:1px}
+.tool-row-info{flex:1}
+.tool-row-label{color:var(--text2);font-weight:500}
+.tool-row-desc{color:var(--muted);font-size:11px;margin-top:1px}
+.tool-row-args{display:none;margin-top:var(--s1);padding:var(--s2);background:rgba(0,0,0,.2);border-radius:4px;font-family:'Cascadia Code','Fira Code',Consolas,monospace;font-size:11px;color:var(--muted);white-space:pre-wrap;max-height:160px;overflow-y:auto;cursor:pointer}
+.tool-row.open .tool-row-args{display:block}
+
+/* Thinking */
+.thinking{display:none;padding:var(--s3) var(--s5);align-items:center;gap:var(--s2);color:var(--muted);font-size:12px}
+.thinking.visible{display:flex}
+.thinking-dots{display:flex;gap:3px}
+.thinking-dots span{width:4px;height:4px;border-radius:50%;background:var(--accent);animation:dotPulse 1.6s ease infinite}
+.thinking-dots span:nth-child(2){animation-delay:.2s}
+.thinking-dots span:nth-child(3){animation-delay:.4s}
+@keyframes dotPulse{0%,80%,100%{opacity:.15}40%{opacity:1}}
+
+/* Empty state */
+.empty{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:var(--s6);max-width:460px;margin:0 auto;text-align:left;width:100%}
+.empty-motif{width:120px;height:80px;margin-bottom:var(--s4);opacity:.12}
+.empty-motif circle{fill:var(--accent);stroke:none}
+.empty-motif line{stroke:var(--accent);stroke-width:1}
+.empty-heading{font-size:15px;font-weight:600;margin-bottom:var(--s2)}
+.empty-desc{font-size:13px;color:var(--text2);line-height:1.6;margin-bottom:var(--s5)}
+.example-actions{display:flex;flex-direction:column;gap:var(--s2);width:100%}
+.example-action{display:flex;align-items:center;gap:var(--s2);padding:var(--s2) var(--s3);background:var(--surface);border:1px solid var(--border);border-radius:var(--r);color:var(--text2);font-size:12px;cursor:pointer;transition:border-color 150ms,color 150ms,background 150ms;text-align:left}
+.example-action:hover{border-color:var(--border-strong);color:var(--text);background:var(--surface-hover)}
+.example-action .arrow{color:var(--muted)}
+
+/* Scroll to bottom */
+.scroll-btn{position:absolute;bottom:calc(var(--statusbar) + 60px);right:var(--s4);width:32px;height:32px;border-radius:50%;background:var(--panel);border:1px solid var(--border);color:var(--muted);cursor:pointer;display:none;align-items:center;justify-content:center;z-index:5;transition:background 150ms,color 150ms;box-shadow:0 2px 8px rgba(0,0,0,.3)}
+.scroll-btn.visible{display:flex}
+.scroll-btn:hover{background:var(--surface);color:var(--text2)}
+
+/* ═══ COMPOSER ═══ */
+footer.composer{background:var(--panel);border-top:1px solid var(--border);padding:var(--s2) var(--s4);display:flex;gap:var(--s2);align-items:center;flex-shrink:0}
+footer.composer textarea{flex:1;padding:8px var(--s3);background:var(--surface);border:1px solid var(--border);border-radius:var(--r);color:var(--text);font-size:13px;font-family:inherit;resize:none;outline:none;min-height:36px;max-height:120px;line-height:1.45;transition:border-color 150ms}
+footer.composer textarea:focus{border-color:var(--accent)}
+footer.composer textarea::placeholder{color:var(--muted)}
+.send-btn{width:36px;height:36px;border-radius:var(--r);border:none;background:var(--accent);color:#fff;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:background 150ms}
+.send-btn:hover{background:var(--accent-hover)}
+.send-btn:disabled{opacity:.35;cursor:not-allowed}
+
+/* ═══ STATUS BAR ═══ */
+footer.sb{height:var(--statusbar);background:var(--panel);border-top:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;padding:0 var(--s4);font-size:11px;color:var(--muted);flex-shrink:0}
+.sb-sec{display:flex;align-items:center;gap:var(--s2)}
+.sb .sep{color:var(--border)}
+
+/* ═══ OVERLAYS ═══ */
+.overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:100;align-items:center;justify-content:center}
+.overlay.visible{display:flex}
+.sheet-bg{display:none;position:fixed;inset:0;background:rgba(0,0,0,.35);z-index:90}
+.sheet-bg.visible{display:block}
+.sheet{display:none;position:fixed;top:0;right:0;bottom:0;width:340px;background:var(--panel);border-left:1px solid var(--border);z-index:95;overflow-y:auto;padding:var(--s5);transform:translateX(100%);transition:transform 200ms ease}
+.sheet.visible{display:block;transform:translateX(0)}
+.sheet-title{font-size:15px;font-weight:600;margin-bottom:var(--s5)}
+.sheet-close{position:absolute;top:var(--s4);right:var(--s4);background:none;border:none;color:var(--muted);cursor:pointer;padding:4px;transition:color 120ms}
+.sheet-close:hover{color:var(--text)}
+
+/* Dialog */
+.dialog{background:var(--panel);border:1px solid var(--border);border-radius:var(--r2);padding:var(--s6);width:380px;max-width:90vw;box-shadow:0 8px 32px rgba(0,0,0,.4)}
+.dialog-title{font-size:16px;font-weight:600;margin-bottom:var(--s2)}
+.dialog-desc{font-size:13px;color:var(--text2);margin-bottom:var(--s5);line-height:1.5}
+
+/* Forms */
+.field{margin-bottom:var(--s4)}
+.field:last-child{margin-bottom:0}
+.field label{display:block;font-size:12px;color:var(--text2);margin-bottom:var(--s1);font-weight:500}
+.field input[type="password"],.field input[type="text"],.field select{width:100%;padding:8px var(--s3);background:var(--surface);border:1px solid var(--border);border-radius:var(--r);color:var(--text);font-size:13px;outline:none;transition:border-color 150ms}
+.field input:focus,.field select:focus{border-color:var(--accent)}
+.field input::placeholder{color:var(--muted)}
+.field-hint{font-size:11px;color:var(--muted);margin-top:var(--s1)}
+.field-hint a{color:var(--accent);text-decoration:none}
+.field-hint a:hover{text-decoration:underline}
+.field-error{font-size:11px;color:var(--err);margin-top:var(--s1)}
+.sec-label{font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin:var(--s5) 0 var(--s2);padding-top:var(--s3);border-top:1px solid var(--border)}
+.sec-label:first-child{border-top:none;margin-top:0;padding-top:0}
+
+/* Buttons */
+.btn{padding:8px var(--s4);border-radius:var(--r);border:none;font-size:13px;font-weight:600;cursor:pointer;transition:background 150ms,color 150ms}
+.btn-p{background:var(--accent);color:#fff}.btn-p:hover{background:var(--accent-hover)}.btn-p:disabled{opacity:.4;cursor:not-allowed}
+.btn-g{background:transparent;color:var(--text2);border:1px solid var(--border)}.btn-g:hover{background:var(--surface);color:var(--text)}
+.btn-d{background:transparent;color:var(--err);border:1px solid rgba(201,104,104,.25)}.btn-d:hover{background:rgba(201,104,104,.06)}
+.btn-sm{padding:4px var(--s3);font-size:12px}
+.btn-block{width:100%}
+
+/* Toggle */
+.tgl-wrap{display:flex;align-items:center;gap:var(--s2)}
+.tgl-input{display:none}
+.tgl-label{width:30px;height:16px;background:var(--border);border-radius:8px;position:relative;cursor:pointer;transition:background 200ms;display:block;flex-shrink:0}
+.tgl-label::after{content:'';position:absolute;top:2px;left:2px;width:12px;height:12px;background:var(--muted);border-radius:50%;transition:transform 200ms,background 200ms}
+.tgl-input:checked+.tgl-label{background:var(--accent)}
+.tgl-input:checked+.tgl-label::after{transform:translateX(14px);background:#fff}
+
+/* MCP card */
+.mcp-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--r);padding:var(--s3);margin-bottom:var(--s2)}
+.mcp-card-name{font-size:12px;font-weight:600}
+.mcp-card-info{font-size:11px;color:var(--muted);margin-top:2px}
+.mcp-card-st{font-size:11px;margin-top:4px;display:flex;align-items:center;gap:4px}
+
+/* Tool group */
+.tg-title{font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);margin:var(--s3) 0 var(--s2)}
+.ti{display:flex;align-items:flex-start;gap:var(--s2);padding:var(--s2);border-radius:var(--r);transition:background 120ms}
+.ti:hover{background:var(--surface)}
+.ti-info{flex:1}
+.ti-name{font-size:12px;font-weight:500;color:var(--text)}
+.ti-desc{font-size:11px;color:var(--muted)}
+
+/* ═══ SIDEBAR ═══ */
+.app-body{display:flex;flex:1;overflow:hidden}
+.sidebar{width:260px;min-width:260px;background:var(--panel);border-right:1px solid var(--border);display:flex;flex-direction:column;transition:margin-left 200ms ease,opacity 200ms ease;flex-shrink:0;overflow:hidden}
+.sidebar.closed{margin-left:-260px;opacity:0;pointer-events:none}
+.sb-head{display:flex;align-items:center;justify-content:space-between;padding:var(--s3);border-bottom:1px solid var(--border)}
+.sb-head-title{font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:.5px;color:var(--muted)}
+.sb-new{width:26px;height:26px;border-radius:var(--r);border:1px solid var(--border);background:transparent;color:var(--muted);cursor:pointer;display:flex;align-items:center;justify-content:center;transition:background 150ms,color 150ms}
+.sb-new:hover{background:var(--surface);color:var(--text2)}
+.sb-search{padding:var(--s2) var(--s3)}
+.sb-search input{width:100%;padding:6px var(--s3);background:var(--surface);border:1px solid var(--border);border-radius:var(--r);color:var(--text);font-size:12px;outline:none;transition:border-color 150ms}
+.sb-search input:focus{border-color:var(--accent)}
+.sb-search input::placeholder{color:var(--muted)}
+.sb-list{flex:1;overflow-y:auto;padding:var(--s1) 0}
+.cv{display:flex;align-items:center;padding:var(--s2) var(--s3);cursor:pointer;transition:background 120ms;border-left:2px solid transparent;gap:var(--s2)}
+.cv:hover{background:var(--surface)}
+.cv.active{background:var(--accent-dim);border-left-color:var(--accent)}
+.cv-icon{flex-shrink:0;color:var(--muted)}
+.cv.active .cv-icon{color:var(--accent)}
+.cv-info{flex:1;min-width:0}
+.cv-title{font-size:12px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.cv-preview{font-size:11px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:1px}
+.cv-pin{color:var(--accent);font-size:10px;margin-left:2px}
+.cv-actions{display:flex;gap:2px;opacity:0;transition:opacity 120ms}
+.cv:hover .cv-actions{opacity:1}
+.cv-act{width:22px;height:22px;border:none;background:transparent;color:var(--muted);border-radius:4px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:background 120ms,color 120ms;flex-shrink:0}
+.cv-act:hover{background:var(--surface-hover);color:var(--text2)}
+.cv-act.del:hover{color:var(--err)}
+
+/* Context menu */
+.ctx-menu{display:none;position:fixed;background:var(--panel);border:1px solid var(--border);border-radius:var(--r2);box-shadow:0 4px 16px rgba(0,0,0,.4);z-index:200;padding:var(--s1);min-width:160px}
+.ctx-menu.visible{display:block}
+.ctx-item{display:flex;align-items:center;gap:var(--s2);padding:6px var(--s3);font-size:12px;color:var(--text2);cursor:pointer;border-radius:4px;transition:background 100ms}
+.ctx-item:hover{background:var(--surface);color:var(--text)}
+.ctx-item.danger{color:var(--err)}
+.ctx-item.danger:hover{background:rgba(201,104,104,.06)}
+.ctx-sep{height:1px;background:var(--border);margin:var(--s1) 0}
+
+@media(max-width:720px){.sidebar{position:fixed;top:var(--topbar);left:0;bottom:0;z-index:80;box-shadow:4px 0 16px rgba(0,0,0,.3)}.sidebar.closed{margin-left:-280px}}
+
+/* Scrollbar */
+::-webkit-scrollbar{width:5px}::-webkit-scrollbar-track{background:transparent}::-webkit-scrollbar-thumb{background:var(--border);border-radius:3px}::-webkit-scrollbar-thumb:hover{background:var(--border-strong)}
+
+/* ═══ LOADING SCREEN ═══ */
+.loading-screen{position:fixed;inset:0;z-index:9999;background:var(--bg);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:var(--s5);transition:opacity 300ms ease}
+.loading-screen.hidden{opacity:0;pointer-events:none}
+.loading-logo{width:48px;height:48px;color:var(--accent);animation:ldPulse 2s ease infinite}
+.loading-logo svg{width:100%;height:100%;stroke:currentColor;fill:none;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round}
+.loading-title{font-size:18px;font-weight:700;letter-spacing:.3px;color:var(--text)}
+.loading-sub{font-size:12px;color:var(--muted)}
+.loading-bar{width:200px;height:3px;background:var(--border);border-radius:2px;overflow:hidden;margin-top:var(--s2)}
+.loading-bar-inner{height:100%;width:0%;background:var(--accent);border-radius:2px;transition:width 400ms ease}
+@keyframes ldPulse{0%,100%{opacity:.5;transform:scale(1)}50%{opacity:1;transform:scale(1.05)}}
+</style>
+</head>
+<body>
+
+<!-- Loading Screen -->
+<div class="loading-screen" id="loadingScreen">
+  <div class="loading-logo">
+    <svg viewBox="0 0 24 24">
+      <path d="M14.5 17.5L3 6V3h3l11.5 11.5"/>
+      <path d="M13 19l6-6"/><path d="M16 16l4 4"/>
+      <path d="M10.5 6.5L3 14l3 3 7.5-7.5"/>
+    </svg>
+  </div>
+  <div class="loading-title">ChatPoE</div>
+  <div class="loading-sub" id="loadingText">Initializing...</div>
+  <div class="loading-bar"><div class="loading-bar-inner" id="loadingBar"></div></div>
+</div>
+
+<header class="topbar">
+  <div class="tb-left">
+    <button class="ib" id="menuBtn" onclick="toggleSidebar()" aria-label="Toggle history"></button>
+    <span class="icon" style="--is:16px;color:var(--muted)" id="appIcon"></span>
+    <span class="tb-title">ChatPoE</span>
+    <span class="tb-sub">Build analysis companion</span>
+  </div>
+  <div class="tb-right">
+    <div style="display:flex;align-items:center;gap:var(--s2)">
+      <span class="status-chip" id="pillAI"></span>
+      <span class="status-chip" id="pillMCP"></span>
+    </div>
+    <button class="mdl-btn" id="modelBtn" onclick="toggleModelPop()" aria-label="Select model">
+      <span id="modelBtnLabel">Select model</span>
+      <span class="icon" style="--is:12px" id="mdlChev"></span>
+    </button>
+    <div class="popover" id="modelPop"></div>
+    <button class="ib" onclick="openSettings()" aria-label="Settings" id="settingsBtn"></button>
+  </div>
+</header>
+
+<div class="app-body">
+<aside class="sidebar closed" id="sidebar">
+  <div class="sb-head">
+    <span class="sb-head-title">History</span>
+    <button class="sb-new" id="newChatBtn" onclick="newChat()" aria-label="New chat"></button>
+  </div>
+  <div class="sb-search">
+    <input type="text" id="histSearch" placeholder="Search conversations..." oninput="searchHistory(this.value)">
+  </div>
+  <div class="sb-list" id="histList"></div>
+</aside>
+
+<main class="ws" id="workspace">
+  <div class="chat" id="chatMessages" role="log" aria-label="Chat messages" style="display:none"></div>
+  <div class="empty" id="emptyState">
+    <svg class="empty-motif" viewBox="0 0 120 80">
+      <line x1="60" y1="40" x2="30" y2="20"/><line x1="60" y1="40" x2="90" y2="20"/>
+      <line x1="60" y1="40" x2="40" y2="65"/><line x1="60" y1="40" x2="80" y2="65"/>
+      <line x1="30" y1="20" x2="15" y2="10"/><line x1="30" y1="20" x2="45" y2="8"/>
+      <line x1="90" y1="20" x2="75" y2="8"/><line x1="90" y1="20" x2="105" y2="12"/>
+      <circle cx="60" cy="40" r="3"/><circle cx="30" cy="20" r="2.5"/><circle cx="90" cy="20" r="2.5"/>
+      <circle cx="40" cy="65" r="2"/><circle cx="80" cy="65" r="2"/>
+      <circle cx="15" cy="10" r="1.5"/><circle cx="45" cy="8" r="1.5"/>
+      <circle cx="75" cy="8" r="1.5"/><circle cx="105" cy="12" r="1.5"/>
+    </svg>
+    <div class="empty-heading">Analyze your PoE2 build</div>
+    <p class="empty-desc">Review defenses, skills, equipment, and passive-tree interactions with optional local MCP tools.</p>
+    <div class="example-actions">
+      <button class="example-action" onclick="sendExample('Review my defensive layers and suggest improvements')">
+        <span class="icon arrow" style="--is:14px" data-icon="chevronR"></span> Review defensive layers
+      </button>
+      <button class="example-action" onclick="sendExample('What is the current price of Exalted Orb?')">
+        <span class="icon arrow" style="--is:14px" data-icon="chevronR"></span> Check currency prices
+      </button>
+      <button class="example-action" onclick="sendExample('Search the wiki for how armor works in PoE2')">
+        <span class="icon arrow" style="--is:14px" data-icon="chevronR"></span> Search PoE2 wiki
+      </button>
+    </div>
+  </div>
+  <div class="thinking" id="thinking" aria-hidden="true">
+    <div class="thinking-dots"><span></span><span></span><span></span></div>
+    <span id="thinkingText">Analyzing your build...</span>
+  </div>
+  <button class="scroll-btn" id="scrollBtn" onclick="scrollToBottom()" aria-label="Scroll to bottom">
+    <span class="icon" style="--is:16px" data-icon="chevronD"></span>
+  </button>
+  <footer class="composer">
+    <label for="messageInput" class="sr-only">Chat message</label>
+    <textarea id="messageInput" placeholder="Ask about your build, defenses, gems, or passive tree..." rows="1" onkeydown="handleKey(event)" oninput="autoResize(this)" aria-label="Type your message"></textarea>
+    <button class="send-btn" id="sendBtn" onclick="sendMessage()" disabled aria-label="Send message">
+      <span class="icon" style="--is:18px" data-icon="send"></span>
+    </button>
+  </footer>
+</main>
+</div><!-- /app-body -->
+
+<!-- Context menu for history items -->
+<div class="ctx-menu" id="ctxMenu">
+  <div class="ctx-item" onclick="ctxRename()"><span class="icon" style="--is:14px" data-icon="edit"></span> Rename</div>
+  <div class="ctx-item" onclick="ctxPin()"><span class="icon" style="--is:14px" data-icon="pin"></span> <span id="ctxPinLabel">Pin</span></div>
+  <div class="ctx-item" onclick="ctxExport()"><span class="icon" style="--is:14px" data-icon="ext"></span> Export</div>
+  <div class="ctx-sep"></div>
+  <div class="ctx-item danger" onclick="ctxDelete()"><span class="icon" style="--is:14px" data-icon="trash"></span> Delete</div>
+</div>
+
+<footer class="sb">
+  <div class="sb-sec"><span class="sd x" id="sbDot"></span><span id="sbStatus">Setting up...</span></div>
+  <div class="sb-sec"><span id="sbTools" style="display:none"></span><span class="sep">·</span><span>nextzus</span></div>
+</footer>
+
+<!-- Onboarding -->
+<div class="overlay" id="onbOverlay">
+  <div class="dialog" role="dialog" aria-label="Set up Gemini">
+    <div class="dialog-title">Set up Gemini</div>
+    <div class="dialog-desc">Add your Gemini API key and choose a default model to get started.</div>
+    <div class="field">
+      <label for="onbKey">Gemini API Key</label>
+      <input type="password" id="onbKey" placeholder="AIza..." autocomplete="off">
+      <div class="field-hint">Get a free key at <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">aistudio.google.com</a></div>
+      <div class="field-error" id="onbErr" style="display:none"></div>
+    </div>
+    <div class="field">
+      <label for="onbModel">Model</label>
+      <select id="onbModel"></select>
+    </div>
+    <button class="btn btn-p btn-block" id="onbBtn" onclick="onbSave()">Save and continue</button>
+  </div>
+</div>
+
+<!-- Settings Sheet -->
+<div class="sheet-bg" id="setBg" onclick="closeSettings()"></div>
+<div class="sheet" id="setSheet">
+  <button class="sheet-close" onclick="closeSettings()" aria-label="Close settings"><span class="icon" style="--is:18px" data-icon="x"></span></button>
+  <div class="sheet-title">Settings</div>
+  <div class="sec-label">AI Provider</div>
+  <div class="field">
+    <label>Gemini API Key</label>
+    <div style="display:flex;align-items:center;gap:var(--s2)">
+      <span id="setKeySt" style="font-size:12px;color:var(--muted)">Not set</span>
+      <button class="btn btn-g btn-sm" onclick="changeKeyDlg()">Change</button>
+      <button class="btn btn-d btn-sm" id="setRemBtn" onclick="removeKey()" style="display:none">Remove</button>
+    </div>
+  </div>
+  <div class="field">
+    <label for="setModel">Default Model</label>
+    <select id="setModel" onchange="changeModelSettings()"></select>
+  </div>
+  <div class="sec-label">MCP Server</div>
+  <div class="field">
+    <div class="tgl-wrap">
+      <input type="checkbox" class="tgl-input" id="setMcpTgl" onchange="toggleMcpSettings()">
+      <label class="tgl-label" for="setMcpTgl"></label>
+      <span style="font-size:12px">Enable MCP tools</span>
+    </div>
+  </div>
+  <div id="setMcpSt" style="font-size:12px;color:var(--muted);margin-bottom:var(--s3)"></div>
+  <div id="setMcpServers"></div>
+  <button class="btn btn-g btn-sm" id="setRestart" onclick="restartMcp()" style="display:none">Restart MCP</button>
+  <div class="sec-label">Tool Permissions</div>
+  <div style="display:flex;align-items:center;justify-content:space-between">
+    <span id="setToolCt" style="font-size:12px;color:var(--text2)">0 tools enabled</span>
+    <button class="btn btn-g btn-sm" onclick="openTools()">Manage tools</button>
+  </div>
+  <div class="sec-label">Trade API</div>
+  <div class="field">
+    <label>Path of Exile Session</label>
+    <div style="display:flex;align-items:center;gap:var(--s2)">
+      <span id="setTradeSt" style="font-size:12px;color:var(--muted)">Not connected</span>
+      <button class="btn btn-g btn-sm" id="setTradeBtn" onclick="startTradeAuth()">Connect</button>
+      <button class="btn btn-d btn-sm" id="setTradeRemBtn" onclick="removeTradeAuth()" style="display:none">Remove</button>
+    </div>
+    <div class="field-hint" id="setTradeHint">Required for searching the trade market. Session stored in Windows Credential Manager.</div>
+    <div class="field-error" id="setTradeErr" style="display:none"></div>
+  </div>
+  <div id="tradePasteSection" style="display:none;margin-top:var(--s2)">
+    <div class="field">
+      <label for="tradePasteInput">Paste POESESSID</label>
+      <div style="display:flex;gap:var(--s2)">
+        <input type="password" id="tradePasteInput" placeholder="Paste your POESESSID cookie value..." style="flex:1;padding:6px var(--s3);background:var(--surface);border:1px solid var(--border);border-radius:var(--r);color:var(--text);font-size:12px;outline:none" autocomplete="off">
+        <button class="btn btn-p btn-sm" id="tradePasteBtn" onclick="saveTradeManual()">Save</button>
+      </div>
+      <div class="field-hint">Get it from browser: F12 → Application → Cookies → pathofexile.com → POESESSID</div>
+      <div class="field-error" id="tradePasteErr" style="display:none"></div>
+    </div>
+  </div>
+  <button class="btn btn-g btn-sm" id="tradePasteToggle" onclick="toggleTradePaste()" style="margin-top:var(--s1);font-size:11px">Paste session manually</button>
+</div>
+
+<!-- Tools Sheet -->
+<div class="sheet-bg" id="toolsBg" onclick="closeTools()"></div>
+<div class="sheet" id="toolsSheet" style="z-index:96">
+  <button class="sheet-close" onclick="closeTools()" aria-label="Close tools"><span class="icon" style="--is:18px" data-icon="x"></span></button>
+  <div class="sheet-title">MCP Tools</div>
+  <p style="font-size:12px;color:var(--text2);margin-bottom:var(--s4)">Allow the advisor to use local PoE2 data tools. Disabled tools will not be exposed to the AI.</p>
+  <div id="toolsList"></div>
+  <div style="margin-top:var(--s4)"><button class="btn btn-g btn-sm" onclick="resetTools()">Reset defaults</button></div>
+</div>
+
+<!-- Change Key -->
+<div class="overlay" id="chgOverlay">
+  <div class="dialog" role="dialog" aria-label="Change API key">
+    <div class="dialog-title">Change Gemini API Key</div>
+    <div class="field">
+      <label for="chgKey">New API Key</label>
+      <input type="password" id="chgKey" placeholder="AIza..." autocomplete="off">
+      <div class="field-error" id="chgErr" style="display:none"></div>
+    </div>
+    <div style="display:flex;gap:var(--s2)">
+      <button class="btn btn-p" id="chgBtn" onclick="saveChgKey()">Save</button>
+      <button class="btn btn-g" onclick="closeChgKey()">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<script>
+/* ═══ SVG Icons ═══ */
+const I={
+  swords:'<svg viewBox="0 0 24 24"><path d="M14.5 17.5L3 6V3h3l11.5 11.5"/><path d="M13 19l6-6"/><path d="M16 16l4 4"/><path d="M19 21l2-2"/><path d="M21 21l-2-2"/><path d="M3 3l2 2"/><path d="M10.5 6.5L3 14l3 3 7.5-7.5"/></svg>',
+  menu:'<svg viewBox="0 0 24 24"><line x1="4" y1="6" x2="20" y2="6"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="18" x2="20" y2="18"/></svg>',
+  plus:'<svg viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>',
+  search:'<svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>',
+  pin:'<svg viewBox="0 0 24 24"><line x1="12" y1="17" x2="12" y2="22"/><path d="M5 17h14v-1.76l-1.99-2.01V9c0-1.1-.64-2.08-1.63-2.51L15 6.01V3H9v3.01l-.37.48C7.64 6.92 7 7.9 7 9v4.23L5 15.24z"/></svg>',
+  trash:'<svg viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>',
+  edit:'<svg viewBox="0 0 24 24"><path d="M17 3a2.83 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg>',
+  msg:'<svg viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>',
+  settings:'<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>',
+  send:'<svg viewBox="0 0 24 24"><path d="M12 19V5M5 12l7-7 7 7"/></svg>',
+  chevD:'<svg viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg>',
+  chevR:'<svg viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></svg>',
+  check:'<svg viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg>',
+  circle:'<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/></svg>',
+  alert:'<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>',
+  loader:'<svg viewBox="0 0 24 24"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>',
+  x:'<svg viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12"/></svg>',
+  copy:'<svg viewBox="0 0 24 24"><rect width="14" height="14" x="8" y="8" rx="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>',
+  eye:'<svg viewBox="0 0 24 24"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>',
+  eyeOff:'<svg viewBox="0 0 24 24"><path d="M9.88 9.88a3 3 0 1 0 4.24 4.24"/><path d="M10.73 5.08A10.43 10.43 0 0 1 12 5c7 0 10 7 10 7a13.16 13.16 0 0 1-1.67 2.68"/><path d="M6.61 6.61A13.526 13.526 0 0 0 2 12s3 7 10 7a9.74 9.74 0 0 0 5.39-1.61"/><line x1="2" y1="2" x2="22" y2="22"/></svg>',
+  ext:'<svg viewBox="0 0 24 24"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>',
+  sparkles:'<svg viewBox="0 0 24 24"><path d="M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.581a.5.5 0 0 1 0 .964L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z"/></svg>',
+  plug:'<svg viewBox="0 0 24 24"><path d="M12 22v-5"/><path d="M9 8V2"/><path d="M15 8V2"/><path d="M18 8v5a6 6 0 0 1-12 0V8z"/></svg>',
+  wrench:'<svg viewBox="0 0 24 24"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>',
+  database:'<svg viewBox="0 0 24 24"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5V19A9 3 0 0 0 21 19V5"/><path d="M3 12A9 3 0 0 0 21 12"/></svg>',
+  shield:'<svg viewBox="0 0 24 24"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/></svg>',
+  globe:'<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>',
+  lock:'<svg viewBox="0 0 24 24"><rect width="18" height="11" x="3" y="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>',
+};
+
+function ih(name,size){return `<span class="icon" style="--is:${size||16}px">${I[name]||I.circle}</span>`}
+
+/* ═══ Tool Presentation Registry ═══ */
+const TM={
+  analyze_character:{l:"Load character snapshot",d:"Read equipment, skills, and core build data"},
+  import_poe_ninja_url:{l:"Import from poe.ninja",d:"Load a character build from a poe.ninja URL"},
+  compare_to_top_players:{l:"Compare to top players",d:"Benchmark your build against ladder leaders"},
+  analyze_passive_tree:{l:"Analyze passive tree",d:"Review allocated nodes and pathing efficiency"},
+  list_all_supports:{l:"List all support gems",d:"Browse the full support gem database"},
+  list_all_spells:{l:"List all spell gems",d:"Browse the full spell gem database"},
+  inspect_support_gem:{l:"Inspect support gem",d:"Check gem stats and tag compatibility"},
+  inspect_spell_gem:{l:"Inspect spell gem",d:"View spell gem details and scaling"},
+  validate_support_combination:{l:"Validate gem combo",d:"Check if support gems work with a skill"},
+  list_all_keystones:{l:"List keystones",d:"Browse all keystone passives"},
+  inspect_keystone:{l:"Inspect keystone",d:"View keystone effects and interactions"},
+  list_all_notables:{l:"List notables",d:"Browse all notable passives"},
+  inspect_passive_node:{l:"Inspect passive node",d:"View passive node stats and connections"},
+  get_ascendancy_info:{l:"Ascendancy info",d:"View ascendancy class details"},
+  list_all_mods:{l:"List all modifiers",d:"Browse the full item modifier database"},
+  inspect_mod:{l:"Inspect modifier",d:"View mod tiers, stats, and item slots"},
+  search_mods_by_stat:{l:"Search modifiers",d:"Find mods by stat name or effect"},
+  get_mod_tiers:{l:"Get mod tiers",d:"View tier breakdown for a modifier"},
+  validate_item_mods:{l:"Validate item mods",d:"Check if mods are valid for an item base"},
+  get_available_mods:{l:"Available mods",d:"List mods that can roll on an item"},
+  list_all_base_items:{l:"List base items",d:"Browse all item base types"},
+  inspect_base_item:{l:"Inspect base item",d:"View item type stats and requirements"},
+  explain_mechanic:{l:"Explain mechanic",d:"Get a detailed explanation of a game mechanic"},
+  get_formula:{l:"Get formula",d:"View damage or defense calculation formulas"},
+  import_pob:{l:"Import PoB build",d:"Load a Path of Building build file"},
+  export_pob:{l:"Export PoB build",d:"Generate a Path of Building export"},
+  get_pob_code:{l:"Get PoB code",d:"Copy Path of Building share code"},
+  search_items:{l:"Search items",d:"Search the item database"},
+  search_trade_items:{l:"Search trade",d:"Search live trade listings"},
+  poe2_currency_prices:{l:"Currency prices",d:"Current exchange rates for all currencies"},
+  poe2_currency_check:{l:"Check currency",d:"Look up a specific currency by name"},
+  poe2_item_price:{l:"Item price check",d:"Price check items across exchange categories"},
+  poe2_exchange_top:{l:"Top exchange items",d:"Most valuable items by category"},
+  poe2_wiki_search:{l:"Search wiki",d:"Search the PoE2 community wiki"},
+  poe2_wiki_page:{l:"Read wiki page",d:"Retrieve a full wiki article"},
+  poe2_db_lookup:{l:"Database lookup",d:"Query datamined game data"},
+  poe2_meta_builds:{l:"Meta builds",d:"Ladder class distribution and trends"},
+  poe2_log_summary:{l:"Game log summary",d:"Parse local game logs for zone and session data"},
+  poe2_pob_decode:{l:"Decode PoB build",d:"Decode builds from pobb.in or poe.ninja"},
+  poe2_pob_local_builds:{l:"Local PoB builds",d:"List saved PoB2 builds from filesystem"},
+  poe2_pob_compare:{l:"Compare builds",d:"Compare two builds for gear and skill differences"},
+  poe2_parse_item:{l:"Parse item",d:"Parse item clipboard text with mod tiers and pricing"},
+  health_check:{l:"Health check",d:"Verify MCP server connectivity"},
+  clear_cache:{l:"Clear cache",d:"Reset cached game data"},
+};
+
+function tl(name){return TM[name]?TM[name].l:name.replace(/_/g,' ').replace(/\b\w/g,c=>c.toUpperCase())}
+function td(name){return TM[name]?TM[name].d:''}
+
+/* ═══ State ═══ */
+let S={hasKey:false,gemini:false,mcp:false,model:'',mcpOn:false,presets:[],servers:[],tools:null,allTools:[],srvSt:{},activeConvId:null,dataDir:'',tradeAuth:{connected:false,masked:''}};
+let busy=false;
+let _sidebarOpen=false;
+let _convList=[];
+let _ctxConvId=null;
+function api(){try{return window.pywebview&&window.pywebview.api}catch(e){return null}}
+
+/* ═══ Boot ═══ */
+function _ldPct(pct){const b=document.getElementById('loadingBar');if(b)b.style.width=pct+'%'}
+function _ldTxt(txt){const t=document.getElementById('loadingText');if(t)t.textContent=txt}
+function _ldHide(){const s=document.getElementById('loadingScreen');if(s){s.classList.add('hidden');setTimeout(()=>s.remove(),400)}}
+
+async function init(){
+  const a=api();if(!a)return;
+  try{
+    _ldPct(10);_ldTxt('Loading app state...');
+    S=await a.get_app_state();
+    _ldPct(25);
+  }catch(e){_ldHide();return}
+  initIcons();
+  populateSelects();
+  if(!S.hasKey){_ldPct(100);_ldHide();showOnb();return}
+  updateUI();
+  _ldPct(40);_ldTxt('Connecting AI...');
+  const r=await a.auto_connect();
+  try{S=await a.get_app_state()}catch(e){}
+  updateUI();
+  _ldPct(70);_ldTxt('Loading history...');
+  if(S.gemini)enableChat();
+  await loadHistory();
+  if(S.activeConvId)loadConversation(S.activeConvId);
+  _ldPct(100);_ldTxt('Ready');
+  setTimeout(_ldHide,300);
+}
+
+function initIcons(){
+  document.getElementById('appIcon').innerHTML=I.swords;
+  document.getElementById('mdlChev').innerHTML=I.chevD;
+  document.getElementById('settingsBtn').innerHTML=I.settings;
+  document.getElementById('menuBtn').innerHTML=I.menu;
+  document.getElementById('newChatBtn').innerHTML=I.plus;
+  // Set all data-icon elements
+  document.querySelectorAll('[data-icon]').forEach(el=>{
+    const n=el.getAttribute('data-icon');
+    if(I[n])el.innerHTML=I[n];
+  });
+}
+
+/* ═══ Onboarding ═══ */
+function showOnb(){document.getElementById('onbOverlay').classList.add('visible');populateSelect(document.getElementById('onbModel'),S.presets,S.model)}
+async function onbSave(){
+  const a=api(),key=document.getElementById('onbKey').value.trim(),model=document.getElementById('onbModel').value;
+  const btn=document.getElementById('onbBtn'),err=document.getElementById('onbErr');
+  if(!key){err.textContent='Please enter an API key';err.style.display='block';return}
+  btn.disabled=true;btn.textContent='Checking API key...';err.style.display='none';
+  const r=await a.validate_and_save_key(key);
+  if(r.valid){document.getElementById('onbOverlay').classList.remove('visible');S.hasKey=true;S.model=model;
+    const g=await a.init_gemini(model);if(g.success){S.gemini=true;S.model=g.model;updateUI();enableChat();
+      await a.auto_connect();try{S=await a.get_app_state()}catch(e){}updateUI();}
+    await loadHistory();
+  }else{err.textContent=r.error||'Invalid API key';err.style.display='block';btn.disabled=false;btn.textContent='Save and continue'}
+}
+
+/* ═══ Chat ═══ */
+function enableChat(){document.getElementById('sendBtn').disabled=false;document.getElementById('emptyState').style.display='none';document.getElementById('chatMessages').style.display='block'}
+async function sendMessage(){
+  if(busy)return;const a=api();if(!a)return;
+  const inp=document.getElementById('messageInput'),text=inp.value.trim();if(!text)return;
+  // Auto-create conversation if none active
+  if(!S.activeConvId){
+    const cr=await a.history_create();
+    if(cr.success){S.activeConvId=cr.conversation.id;await loadHistory()}
+  }
+  inp.value='';autoResize(inp);addUserMsg(text);setThinking(true);
+  document.getElementById('sendBtn').disabled=true;busy=true;
+  try{const r=await a.send_message(text);setThinking(false);
+    if(r.tool_calls&&r.tool_calls.length>0)addToolBlock(r.tool_calls);
+    if(r.type==='error')showErr(r.content);else addAsstMsg(r.content);
+    // Refresh sidebar after message saved
+    await loadHistory();
+  }catch(e){setThinking(false);showErr('Error: '+e)}
+  busy=false;document.getElementById('sendBtn').disabled=false;
+}
+function sendExample(t){if(!S.gemini)return;document.getElementById('messageInput').value=t;sendMessage()}
+function handleKey(e){if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();sendMessage()}}
+function autoResize(el){el.style.height='auto';el.style.height=Math.min(el.scrollHeight,120)+'px'}
+
+/* ═══ Model ═══ */
+function populateSelects(){populateSelect(document.getElementById('onbModel'),S.presets,S.model);populateSelect(document.getElementById('setModel'),S.presets,S.model);updModelBtn()}
+function populateSelect(el,presets,sel){el.innerHTML='';presets.forEach(p=>{const o=document.createElement('option');o.value=p.id;o.textContent=p.label+(p.badge?' — '+p.badge:'');if(p.id===sel)o.selected=true;el.appendChild(o)})}
+function updModelBtn(){const p=S.presets.find(p=>p.id===S.model);document.getElementById('modelBtnLabel').textContent=p?p.label:S.model||'Select model'}
+function toggleModelPop(){
+  const p=document.getElementById('modelPop');if(p.classList.contains('visible')){p.classList.remove('visible');return}
+  p.innerHTML='';S.presets.forEach(pr=>{const o=document.createElement('div');o.className='mdl-opt'+(pr.id===S.model?' sel':'');
+    o.innerHTML=`<div class="mdl-opt-name">${pr.badge?'<span class="mdl-badge">'+pr.badge+'</span>':''}${pr.label}</div><div class="mdl-opt-desc">${pr.description}</div>`;
+    o.addEventListener('click',()=>selModel(pr.id));p.appendChild(o)});p.classList.add('visible');
+}
+async function selModel(id){document.getElementById('modelPop').classList.remove('visible');if(id===S.model)return;const a=api(),r=await a.change_model(id);if(r.success){S.model=id;updModelBtn();document.getElementById('setModel').value=id}}
+function changeModelSettings(){const id=document.getElementById('setModel').value;if(id&&id!==S.model)selModel(id)}
+document.addEventListener('click',e=>{const w=document.getElementById('modelBtn');if(w&&!w.contains(e.target))document.getElementById('modelPop').classList.remove('visible')});
+
+/* ═══ UI Update ═══ */
+function updateUI(){updPills();updSB();updSettings();updateTradeUI()}
+function updPills(){
+  const ai=document.getElementById('pillAI'),mcp=document.getElementById('pillMCP');
+  ai.innerHTML=S.gemini?`<span class="sd g"></span> AI Ready`:`<span class="sd x"></span> AI Off`;
+  if(S.mcp){const c=S.toolCount||0;mcp.innerHTML=`<span class="sd g"></span> MCP <a onclick="openSettings()">${c} tools</a>`}
+  else if(S.mcpOn){mcp.innerHTML='<span class="sd y"></span> MCP...'}
+  else{mcp.innerHTML='<span class="sd x"></span> MCP Off'}
+}
+function updSB(){
+  const dot=document.getElementById('sbDot'),st=document.getElementById('sbStatus'),tools=document.getElementById('sbTools');
+  if(!S.hasKey){dot.className='sd x';st.textContent='Gemini setup required';tools.style.display='none'}
+  else if(S.gemini&&S.mcp){dot.className='sd g';st.textContent='AI Ready';tools.textContent=(S.toolCount||0)+' of '+(S.totalToolCount||0)+' tools enabled';tools.style.display='inline'}
+  else if(S.gemini){dot.className='sd g';st.textContent='AI Ready';tools.textContent='Build tools unavailable';tools.style.display='inline'}
+  else{dot.className='sd r';st.textContent='AI unavailable';tools.style.display='none'}
+}
+function setThinking(on,text){const t=document.getElementById('thinking');t.classList.toggle('visible',on);document.getElementById('thinkingText').textContent=text||'Analyzing your build...';t.setAttribute('aria-hidden',!on)}
+
+/* ═══ Settings ═══ */
+function openSettings(){updSettings();document.getElementById('setBg').classList.add('visible');document.getElementById('setSheet').classList.add('visible')}
+function closeSettings(){document.getElementById('setBg').classList.remove('visible');document.getElementById('setSheet').classList.remove('visible')}
+function updSettings(){
+  const ks=document.getElementById('setKeySt'),rb=document.getElementById('setRemBtn');
+  if(S.hasKey){ks.innerHTML=`<span style="color:var(--ok)">${ih('check',12)}</span> Ready`;rb.style.display='inline-block'}
+  else{ks.textContent='Not set';rb.style.display='none'}
+  populateSelect(document.getElementById('setModel'),S.presets,S.model);
+  document.getElementById('setMcpTgl').checked=S.mcpOn||S.mcp;
+  const ms=document.getElementById('setMcpSt'),rr=document.getElementById('setRestart');
+  if(S.mcp){ms.innerHTML=`<span style="color:var(--ok)">${ih('check',12)}</span> Connected`;rr.style.display='inline-block'}
+  else if(S.mcpOn){ms.innerHTML=`<span style="color:var(--warn)">Starting...</span>`;rr.style.display='none'}
+  else{ms.textContent='Disabled';rr.style.display='none'}
+  renderSrvCards();
+  document.getElementById('setToolCt').textContent=(S.toolCount||0)+' of '+(S.totalToolCount||0)+' tools enabled';
+}
+function renderSrvCards(){
+  const c=document.getElementById('setMcpServers');c.innerHTML='';
+  (S.servers||[]).forEach(s=>{const st=(S.srvSt||{})[s.id]||{};
+    let stH='';if(st.connected)stH=`<div class="mcp-card-st"><span class="sd g"></span> Connected</div>`;
+    else if(st.error)stH=`<div class="mcp-card-st"><span class="sd r"></span> ${st.error}</div>`;
+    c.innerHTML+=`<div class="mcp-card"><div class="mcp-card-name">${s.name||s.id}</div><div class="mcp-card-info">${s.command}${s.args&&s.args.length?' '+s.args.join(' '):''}</div>${stH}</div>`});
+}
+async function toggleMcpSettings(){const a=api(),on=document.getElementById('setMcpTgl').checked;if(on)await a.set_mcp_enabled(true);else await a.set_mcp_enabled(false);try{S=await a.get_app_state()}catch(e){}updateUI()}
+async function restartMcp(){const a=api();await a.stop_mcp();await a.start_mcp();try{S=await a.get_app_state()}catch(e){}updateUI()}
+async function changeKeyDlg(){closeSettings();document.getElementById('chgKey').value='';document.getElementById('chgErr').style.display='none';document.getElementById('chgOverlay').classList.add('visible')}
+function closeChgKey(){document.getElementById('chgOverlay').classList.remove('visible')}
+async function saveChgKey(){const a=api(),key=document.getElementById('chgKey').value.trim(),err=document.getElementById('chgErr'),btn=document.getElementById('chgBtn');
+  if(!key){err.textContent='Enter an API key';err.style.display='block';return}btn.disabled=true;err.style.display='none';
+  const r=await a.validate_and_save_key(key);
+  if(r.valid){closeChgKey();await a.init_gemini(S.model);try{S=await a.get_app_state()}catch(e){}updateUI();enableChat()}
+  else{err.textContent=r.error||'Invalid key';err.style.display='block';btn.disabled=false}}
+async function removeKey(){if(!confirm('Remove saved API key? You will need to enter it again.'))return;const a=api();await a.remove_key();S.hasKey=false;S.gemini=false;updateUI();closeSettings();showOnb()}
+
+/* ═══ Tools Sheet ═══ */
+const TG={
+  Character:['analyze_character','import_poe_ninja_url','compare_to_top_players','analyze_passive_tree'],
+  Gems:['list_all_supports','list_all_spells','inspect_support_gem','inspect_spell_gem','validate_support_combination'],
+  'Passive Tree':['list_all_keystones','inspect_keystone','list_all_notables','inspect_passive_node','get_ascendancy_info'],
+  'Item Mods':['list_all_mods','inspect_mod','search_mods_by_stat','get_mod_tiers','validate_item_mods','get_available_mods'],
+  Items:['list_all_base_items','inspect_base_item'],
+  Knowledge:['explain_mechanic','get_formula'],
+  'Path of Building':['import_pob','export_pob','get_pob_code'],
+  Trade:['search_items','search_trade_items'],
+  'Live Economy':['poe2_currency_prices','poe2_currency_check','poe2_item_price','poe2_exchange_top'],
+  'Wiki & DB':['poe2_wiki_search','poe2_wiki_page','poe2_db_lookup','poe2_meta_builds'],
+  'Game Integration':['poe2_log_summary','poe2_pob_decode','poe2_pob_local_builds','poe2_pob_compare','poe2_parse_item'],
+};
+function toolGroup(n){for(const[g,ts]of Object.entries(TG))if(ts.includes(n))return g;return'Other'}
+function openTools(){renderTools();document.getElementById('toolsBg').classList.add('visible');document.getElementById('toolsSheet').classList.add('visible')}
+function closeTools(){document.getElementById('toolsBg').classList.remove('visible');document.getElementById('toolsSheet').classList.remove('visible')}
+function renderTools(){
+  const c=document.getElementById('toolsList');c.innerHTML='';const all=S.allTools||[],en=S.tools;
+  const groups={};all.forEach(n=>{const g=toolGroup(n);if(!groups[g])groups[g]=[];groups[g].push(n)});
+  for(const[g,tools]of Object.entries(groups)){
+    c.innerHTML+=`<div class="tg-title">${g}</div>`;
+    tools.forEach(n=>{const on=!en||en.includes(n);
+      c.innerHTML+=`<div class="ti"><div class="tgl-wrap"><input type="checkbox" class="tgl-input" id="t-${n}" ${on?'checked':''} data-tool="${n}" onchange="applyTools()"><label class="tgl-label" for="t-${n}"></label></div><div class="ti-info"><div class="ti-name">${tl(n)}</div><div class="ti-desc">${td(n)}</div></div></div>`});
+  }
+}
+async function applyTools(){const cbs=document.querySelectorAll('#toolsList input[type="checkbox"]');const en=[];cbs.forEach(cb=>{if(cb.checked)en.push(cb.dataset.tool)});
+  await api().set_enabled_tools(JSON.stringify(en));try{S=await api().get_app_state()}catch(e){}updateUI()}
+async function resetTools(){await api().set_enabled_tools('null');try{S=await api().get_app_state()}catch(e){}renderTools();updateUI()}
+
+/* ═══ Message Rendering ═══ */
+function addUserMsg(text){
+  const w=document.createElement('div');w.className='msg user';
+  const row=document.createElement('div');row.className='msg-row';
+  const body=document.createElement('div');body.className='msg-body';body.textContent=text;
+  row.appendChild(body);w.appendChild(row);
+  document.getElementById('chatMessages').appendChild(w);scrollDown();
+}
+function addAsstMsg(text){
+  const w=document.createElement('div');w.className='msg assistant';
+  const row=document.createElement('div');row.className='msg-row';
+  const body=document.createElement('div');body.className='msg-body';renderMd(body,text);
+  /* Copy action */
+  const acts=document.createElement('div');acts.className='msg-actions';
+  const cp=document.createElement('button');cp.className='msg-act';cp.innerHTML=I.copy;cp.title='Copy';
+  cp.setAttribute('aria-label','Copy message');cp.onclick=()=>{navigator.clipboard.writeText(text)};
+  acts.appendChild(cp);row.appendChild(body);row.appendChild(acts);w.appendChild(row);
+  document.getElementById('chatMessages').appendChild(w);scrollDown();
+}
+function addToolBlock(tcs){
+  const w=document.createElement('div');w.className='tool-block open';
+  const head=document.createElement('div');head.className='tool-block-head';
+  head.innerHTML=`<div class="tool-block-summary">${ih('loader',14)} <span>${tcs.length} tool${tcs.length>1?'s':''} called</span></div><div class="tool-block-toggle">Hide</div>`;
+  const body=document.createElement('div');body.className='tool-block-body';
+  tcs.forEach(tc=>{
+    const row=document.createElement('div');row.className='tool-row';row.style.cursor='pointer';
+    row.innerHTML=`<span class="tool-row-icon" style="color:var(--ok)">${ih('check',14)}</span><div class="tool-row-info"><div class="tool-row-label">${tl(tc.name)}</div><div class="tool-row-desc">${td(tc.name)}</div><div class="tool-row-args">${JSON.stringify(tc.args,null,2)}</div></div>`;
+    row.addEventListener('click',()=>row.classList.toggle('open'));body.appendChild(row);
+  });
+  head.addEventListener('click',()=>{w.classList.toggle('open');head.querySelector('.tool-block-toggle').textContent=w.classList.contains('open')?'Hide':'Show'});
+  w.appendChild(head);w.appendChild(body);
+  document.getElementById('chatMessages').appendChild(w);scrollDown();
+}
+function showErr(text){
+  const w=document.createElement('div');w.className='msg msg-error';
+  const body=document.createElement('div');body.className='msg-body';body.textContent=text;
+  w.appendChild(body);document.getElementById('chatMessages').appendChild(w);scrollDown();
+}
+
+/* ═══ Scroll ═══ */
+function scrollDown(){const c=document.getElementById('chatMessages');c.scrollTop=c.scrollHeight}
+function scrollToBottom(){const c=document.getElementById('chatMessages');c.scrollTo({top:c.scrollHeight,behavior:'smooth'})}
+document.addEventListener('DOMContentLoaded',()=>{
+  const c=document.getElementById('chatMessages'),b=document.getElementById('scrollBtn');
+  if(c)c.addEventListener('scroll',()=>{const near=c.scrollHeight-c.scrollTop-c.clientHeight<80;b.classList.toggle('visible',c.scrollTop>200&&!near)});
+});
+
+/* ═══ Markdown ═══ */
+function renderMd(ct,text){
+  text.split('\n').forEach((line,i,lines)=>{
+    if(line.startsWith('### ')){const e=document.createElement('div');e.className='md-h4';e.textContent=line.slice(4);ct.appendChild(e)}
+    else if(line.startsWith('## ')){const e=document.createElement('div');e.className='md-h3';e.textContent=line.slice(3);ct.appendChild(e)}
+    else if(line.startsWith('- ')||line.startsWith('* ')){const e=document.createElement('div');e.className='md-li';e.textContent='• '+line.slice(2);ct.appendChild(e)}
+    else{renderInline(ct,line);if(i<lines.length-1)ct.appendChild(document.createElement('br'))}
+  });
+}
+function renderInline(ct,text){
+  const parts=[];let rem=text;
+  while(rem){const bi=rem.indexOf('**'),ci=rem.indexOf('`');let f=-1,tp=null;
+    if(bi>=0&&(ci<0||bi<ci)){f=bi;tp='b'}else if(ci>=0){f=ci;tp='c'}
+    if(f<0){parts.push({t:rem,k:'t'});break}
+    if(f>0)parts.push({t:rem.slice(0,f),k:'t'});rem=rem.slice(f);
+    if(tp==='b'){const e=rem.indexOf('**',2);if(e>=0){parts.push({t:rem.slice(2,e),k:'b'});rem=rem.slice(e+2)}else{parts.push({t:rem,k:'t'});break}}
+    else{const e=rem.indexOf('`',1);if(e>=0){parts.push({t:rem.slice(1,e),k:'c'});rem=rem.slice(e+1)}else{parts.push({t:rem,k:'t'});break}}}
+  parts.forEach(p=>{if(p.k==='b'){const s=document.createElement('strong');s.textContent=p.t;ct.appendChild(s)}
+    else if(p.k==='c'){const s=document.createElement('code');s.textContent=p.t;ct.appendChild(s)}
+    else ct.appendChild(document.createTextNode(p.t))});
+}
+
+/* ═══ Boot ═══ */
+window.addEventListener('pywebviewready',init);
+setTimeout(()=>{if(api())init()},500);
+
+/* ═══ Trade API Auth ═══ */
+function updateTradeUI(){
+  const ta=S.tradeAuth||{connected:false,masked:''};
+  const st=document.getElementById('setTradeSt');
+  const btn=document.getElementById('setTradeBtn');
+  const rem=document.getElementById('setTradeRemBtn');
+  const hint=document.getElementById('setTradeHint');
+  if(ta.connected){
+    st.innerHTML=`<span style="color:var(--ok)">${ih('check',12)}</span> ${esc(ta.masked)}`;
+    btn.textContent='Reconnect';
+    rem.style.display='inline-block';
+    hint.textContent='Trade search is available. Session expires on logout or after ~30 days.';
+  }else{
+    st.innerHTML=`<span style="color:var(--muted)">${ih('globe',12)}</span> Not connected`;
+    btn.textContent='Connect';
+    rem.style.display='none';
+    hint.textContent='Required for searching the trade market. Session stored in Windows Credential Manager.';
+  }
+}
+
+let _tradeBusy=false;
+async function startTradeAuth(){
+  if(_tradeBusy)return;
+  const a=api();if(!a)return;
+  const btn=document.getElementById('setTradeBtn');
+  const err=document.getElementById('setTradeErr');
+  err.style.display='none';
+  btn.disabled=true;_tradeBusy=true;
+  btn.textContent='Opening browser...';
+  const r=await a.start_trade_auth_browser();
+  if(r.started){
+    btn.textContent='Waiting for login...';
+    document.getElementById('setTradeHint').textContent='A browser window should appear. Log in to your PoE account. The session will be detected automatically.';
+  }else{
+    // Show error
+    err.textContent=r.error||'Failed to start browser auth';
+    if(r.install_cmd) err.innerHTML=`Playwright not installed. Run in terminal:<br><code style="background:var(--surface);padding:2px 6px;border-radius:3px;font-size:11px">${r.install_cmd}</code><br>Or use "Paste session manually" below.`;
+    err.style.display='block';
+    btn.textContent='Connect';btn.disabled=false;_tradeBusy=false;
+  }
+}
+window._tradeAuthResult=function(result){
+  const btn=document.getElementById('setTradeBtn');
+  const err=document.getElementById('setTradeErr');
+  btn.disabled=false;_tradeBusy=false;
+  if(result.success){
+    S.tradeAuth={connected:true,masked:result.masked};
+    try{S=Object.assign(S,api().get_app_state()?{}:{})}catch(e){}
+    updateTradeUI();
+  }else{
+    err.textContent=result.error||'Authentication failed';
+    err.style.display='block';
+    btn.textContent='Connect';
+  }
+};
+function cancelTradeAuth(){
+  const a=api();if(a)a.cancel_trade_auth();
+  const btn=document.getElementById('setTradeBtn');
+  btn.textContent='Connect';btn.disabled=false;_tradeBusy=false;
+}
+function toggleTradePaste(){
+  const sec=document.getElementById('tradePasteSection');
+  const toggle=document.getElementById('tradePasteToggle');
+  const visible=sec.style.display!=='none';
+  sec.style.display=visible?'none':'block';
+  toggle.textContent=visible?'Paste session manually':'Hide paste field';
+}
+async function saveTradeManual(){
+  const a=api();if(!a)return;
+  const inp=document.getElementById('tradePasteInput');
+  const err=document.getElementById('tradePasteErr');
+  const val=inp.value.trim();
+  if(!val){err.textContent='Please paste your POESESSID';err.style.display='block';return}
+  err.style.display='none';
+  const btn=document.getElementById('tradePasteBtn');
+  btn.disabled=true;
+  const r=await a.save_trade_auth_manual(val);
+  if(r.success){
+    S.tradeAuth={connected:true,masked:r.masked};
+    inp.value='';
+    updateTradeUI();
+    document.getElementById('tradePasteSection').style.display='none';
+    document.getElementById('tradePasteToggle').textContent='Paste session manually';
+  }else{
+    err.textContent=r.error||'Failed to save';
+    err.style.display='block';
+  }
+  btn.disabled=false;
+}
+async function removeTradeAuth(){
+  if(!confirm('Remove saved trade session? Trade search will stop working.'))return;
+  const a=api();if(!a)return;
+  await a.remove_trade_auth();
+  S.tradeAuth={connected:false,masked:''};
+  updateTradeUI();
+}
+
+/* ═══ History Sidebar ═══ */
+function toggleSidebar(){
+  _sidebarOpen=!_sidebarOpen;
+  document.getElementById('sidebar').classList.toggle('closed',!_sidebarOpen);
+  document.getElementById('menuBtn').innerHTML=_sidebarOpen?I.x:I.menu;
+}
+
+async function loadHistory(){
+  const a=api();if(!a)return;
+  try{
+    _convList=await a.history_list(50);
+    renderHistoryList();
+  }catch(e){console.error('loadHistory:',e)}
+}
+
+function renderHistoryList(filter){
+  const c=document.getElementById('histList');
+  let list=_convList;
+  if(filter){
+    const q=filter.toLowerCase();
+    list=list.filter(cv=>(cv.title||'').toLowerCase().includes(q)||(cv.last_message_preview||'').toLowerCase().includes(q));
+  }
+  c.innerHTML='';
+  if(!list.length){
+    c.innerHTML='<div style="padding:var(--s4);text-align:center;color:var(--muted);font-size:12px">'+(filter?'No matches':'No conversations yet')+'</div>';
+    return;
+  }
+  // Pinned first, then by updated_at desc
+  const pinned=list.filter(cv=>cv.is_pinned).sort((a,b)=>(b.pinned_at||'').localeCompare(a.pinned_at||''));
+  const rest=list.filter(cv=>!cv.is_pinned);
+  const sorted=[...pinned,...rest];
+  sorted.forEach(cv=>{
+    const isActive=cv.id===S.activeConvId;
+    const el=document.createElement('div');
+    el.className='cv'+(isActive?' active':'');
+    el.innerHTML=`<span class="cv-icon">${ih(isActive?'msg':'msg',14)}</span>
+      <div class="cv-info">
+        <div class="cv-title">${esc(cv.title||'Untitled')}${cv.is_pinned?'<span class="cv-pin">📌</span>':''}</div>
+        ${cv.last_message_preview?`<div class="cv-preview">${esc(cv.last_message_preview)}</div>`:''}
+      </div>
+      <div class="cv-actions">
+        <button class="cv-act" onclick="event.stopPropagation();showCtx(event,'${cv.id}')" aria-label="More">${ih('chevD',12)}</button>
+      </div>`;
+    el.addEventListener('click',()=>selectConv(cv.id));
+    el.addEventListener('contextmenu',e=>{e.preventDefault();showCtx(e,cv.id)});
+    c.appendChild(el);
+  });
+}
+
+function esc(s){return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;')}
+
+async function selectConv(id){
+  const a=api();if(!a)return;
+  S.activeConvId=id;
+  await a.history_set_active(id);
+  loadConversation(id);
+  renderHistoryList();
+}
+
+async function loadConversation(id){
+  const a=api();if(!a)return;
+  try{
+    const r=await a.history_get(id);
+    if(!r.success)return;
+    // Clear current chat
+    const chat=document.getElementById('chatMessages');
+    chat.innerHTML='';
+    // Render messages
+    (r.messages||[]).forEach(msg=>{
+      if(msg.role==='user') addUserMsg(msg.content);
+      else if(msg.role==='assistant'){
+        // Render tool calls if any
+        if(msg.tool_calls&&msg.tool_calls.length>0) addToolBlock(msg.tool_calls);
+        if(msg.content) addAsstMsg(msg.content);
+      }
+    });
+    // Show chat area
+    enableChat();
+    // If empty conversation, show empty state
+    if(!r.messages||!r.messages.length){
+      document.getElementById('chatMessages').style.display='none';
+      document.getElementById('emptyState').style.display='flex';
+    }
+  }catch(e){console.error('loadConversation:',e)}
+}
+
+async function newChat(){
+  const a=api();if(!a)return;
+  try{
+    const r=await a.history_create();
+    if(r.success){
+      S.activeConvId=r.conversation.id;
+      // Clear chat
+      document.getElementById('chatMessages').innerHTML='';
+      document.getElementById('chatMessages').style.display='none';
+      document.getElementById('emptyState').style.display='flex';
+      document.getElementById('sendBtn').disabled=!S.gemini;
+      await loadHistory();
+    }
+  }catch(e){console.error('newChat:',e)}
+}
+
+function searchHistory(q){renderHistoryList(q.trim()||undefined)}
+
+/* ── Context Menu ── */
+function showCtx(e,id){
+  e.stopPropagation();
+  _ctxConvId=id;
+  const cv=_convList.find(c=>c.id===id);
+  const menu=document.getElementById('ctxMenu');
+  const pinLabel=document.getElementById('ctxPinLabel');
+  pinLabel.textContent=cv&&cv.is_pinned?'Unpin':'Pin';
+  menu.style.left=Math.min(e.clientX,window.innerWidth-180)+'px';
+  menu.style.top=Math.min(e.clientY,window.innerHeight-160)+'px';
+  menu.classList.add('visible');
+}
+document.addEventListener('click',()=>document.getElementById('ctxMenu').classList.remove('visible'));
+
+async function ctxRename(){
+  const a=api();if(!a||!_ctxConvId)return;
+  const cv=_convList.find(c=>c.id===_ctxConvId);
+  const title=prompt('Rename conversation:',cv?cv.title:'');
+  if(title!==null&&title.trim()){
+    await a.history_rename(_ctxConvId,title.trim());
+    await loadHistory();
+  }
+  _ctxConvId=null;
+}
+
+async function ctxPin(){
+  const a=api();if(!a||!_ctxConvId)return;
+  const cv=_convList.find(c=>c.id===_ctxConvId);
+  await a.history_pin(_ctxConvId,!(cv&&cv.is_pinned));
+  await loadHistory();
+  _ctxConvId=null;
+}
+
+async function ctxExport(){
+  const a=api();if(!a||!_ctxConvId)return;
+  const r=await a.history_export(_ctxConvId,'markdown');
+  if(r.success) alert('Exported to:\n'+r.path);
+  else alert('Export failed: '+r.error);
+  _ctxConvId=null;
+}
+
+async function ctxDelete(){
+  const a=api();if(!a||!_ctxConvId)return;
+  if(!confirm('Delete this conversation?'))return;
+  await a.history_delete(_ctxConvId);
+  if(S.activeConvId===_ctxConvId){
+    S.activeConvId=null;
+    document.getElementById('chatMessages').innerHTML='';
+    document.getElementById('chatMessages').style.display='none';
+    document.getElementById('emptyState').style.display='flex';
+  }
+  await loadHistory();
+  _ctxConvId=null;
+}
+</script>
+</body>
+</html>
