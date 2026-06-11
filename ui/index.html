@@ -587,17 +587,24 @@ async function init(){
   populateSelects();
   if(!S.hasKey){_ldPct(100);_ldHide();showOnb();return}
   updateUI();
+  // Fire background connect (non-blocking) and wait for callback
   _ldPct(40);_ldTxt('Connecting AI...');
-  const r=await a.auto_connect();
-  try{S=await a.get_app_state()}catch(e){}
-  updateUI();
-  _ldPct(70);_ldTxt('Loading history...');
-  if(S.gemini)enableChat();
-  await loadHistory();
-  if(S.activeConvId)loadConversation(S.activeConvId);
-  _ldPct(100);_ldTxt('Ready');
-  setTimeout(_ldHide,300);
+  const bg=await a.auto_connect_background();
+  // UI will be updated by window._onReady callback
 }
+window._onReady=function(data){
+  if(data.state){
+    try{Object.assign(S,data.state)}catch(e){}
+  }
+  _ldPct(70);_ldTxt('Loading history...');
+  updateUI();
+  if(S.gemini)enableChat();
+  loadHistory().then(()=>{
+    if(S.activeConvId)loadConversation(S.activeConvId);
+    _ldPct(100);_ldTxt('Ready');
+    setTimeout(_ldHide,300);
+  });
+};
 
 function initIcons(){
   document.getElementById('appIcon').innerHTML=I.swords;

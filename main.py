@@ -887,6 +887,31 @@ class Api:
 
         return result
 
+    def auto_connect_background(self) -> dict:
+        """Non-blocking auto-connect. Returns immediately, calls window._onReady() when done."""
+        def _run():
+            try:
+                result = self.auto_connect()
+            except Exception as e:
+                logger.error(f"Background auto_connect failed: {e}")
+                result = {"gemini": False, "mcp": False, "error": str(e)}
+            # Update state and notify UI
+            try:
+                state = self.get_app_state()
+            except Exception:
+                state = {}
+            if self.window:
+                try:
+                    self.window.evaluate_js(
+                        f'window._onReady({json.dumps({"result": result, "state": state})})'
+                    )
+                except Exception:
+                    pass
+
+        t = threading.Thread(target=_run, daemon=True)
+        t.start()
+        return {"started": True}
+
 
 # ── Main ───────────────────────────────────────────────────────
 
