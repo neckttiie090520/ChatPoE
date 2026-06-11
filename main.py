@@ -188,13 +188,23 @@ def load_settings() -> dict:
             for key in defaults:
                 if key in raw:
                     defaults[key] = raw[key]
-            # Migration: old format had mcp_command
+            # Migration: old format had mcp_command string -> mcp_servers array
             if "mcp_servers" not in raw and "mcp_command" in raw:
                 defaults["mcp_servers"] = [
                     {"id": "poe2-mcp", "name": "PoE2 Build Data",
                      "command": raw["mcp_command"], "args": [],
                      "enabled": True, "builtin": True}
                 ]
+            # Migration: old format had api_key as base64 -> move to keyring
+            if "api_key" in raw and raw["api_key"] and not get_saved_api_key():
+                try:
+                    import base64
+                    decoded = base64.b64decode(raw["api_key"]).decode("utf-8")
+                    if decoded and len(decoded) > 10:
+                        save_api_key_secure(decoded)
+                        logger.info("Migrated API key from settings.json to keyring")
+                except Exception as e:
+                    logger.warning(f"Failed to migrate API key: {e}")
             return defaults
         except Exception:
             pass
