@@ -149,7 +149,7 @@ footer.sb{height:var(--statusbar);background:var(--panel);border-top:1px solid v
 /* ═══ OVERLAYS ═══ */
 .overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:100;align-items:center;justify-content:center}
 .overlay.visible{display:flex}
-.sheet-bg{display:none;position:fixed;inset:0;background:rgba(0,0,0,.35);z-index:90}
+.sheet-bg{display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:90}
 .sheet-bg.visible{display:block}
 .sheet{display:none;position:fixed;top:0;right:0;bottom:0;width:340px;background:var(--panel);border-left:1px solid var(--border);z-index:95;overflow-y:auto;padding:var(--s5);transform:translateX(100%);transition:transform 200ms ease}
 .sheet.visible{display:block;transform:translateX(0)}
@@ -679,16 +679,20 @@ function showOnb(){document.getElementById('onbOverlay').classList.add('visible'
 async function onbSave(){
   const a=api(),key=document.getElementById('onbKey').value.trim(),model=document.getElementById('onbModel').value;
   const btn=document.getElementById('onbBtn'),err=document.getElementById('onbErr');
+  if(!a){err.textContent='App not ready yet, please wait...';err.style.display='block';return}
   if(!key){err.textContent='Please enter an API key';err.style.display='block';return}
   btn.disabled=true;btn.textContent='Checking API key...';err.style.display='none';
-  const r=await a.validate_and_save_key(key);
-  if(r.valid){document.getElementById('onbOverlay').classList.remove('visible');S.hasKey=true;S.model=model;
-    const g=await a.init_gemini(model);
-    if(g.success){S.gemini=true;S.model=g.model;updateUI();enableChat();
-      // Start MCP connection in background (non-blocking)
-      _connectInBackground();}
-    await loadHistory();
-  }else{err.textContent=r.error||'Invalid API key';err.style.display='block';btn.disabled=false;btn.textContent='Save and continue'}
+  try{
+    const r=await a.validate_and_save_key(key);
+    if(r.valid){document.getElementById('onbOverlay').classList.remove('visible');S.hasKey=true;S.model=model;
+      try{
+        const g=await a.init_gemini(model);
+        if(g.success){S.gemini=true;S.model=g.model;updateUI();enableChat();
+          _connectInBackground();}
+      }catch(e){console.error('init_gemini:',e)}
+      try{await loadHistory()}catch(e){}
+    }else{err.textContent=r.error||'Invalid API key';err.style.display='block';btn.disabled=false;btn.textContent='Save and continue'}
+  }catch(e){err.textContent='Connection error: '+e.message;err.style.display='block';btn.disabled=false;btn.textContent='Save and continue'}
 }
 
 /* ═══ Chat ═══ */
@@ -748,19 +752,26 @@ function updSB(){
 function setThinking(on,text){const t=document.getElementById('thinking');t.classList.toggle('visible',on);document.getElementById('thinkingText').textContent=text||'Analyzing your build...';t.setAttribute('aria-hidden',!on)}
 
 /* ═══ Settings ═══ */
-function openSettings(){updSettings();document.getElementById('setBg').classList.add('visible');document.getElementById('setSheet').classList.add('visible')}
-function closeSettings(){document.getElementById('setBg').classList.remove('visible');document.getElementById('setSheet').classList.remove('visible')}
+function openSettings(){
+  try{updSettings()}catch(e){console.error('updSettings:',e)}
+  document.getElementById('setBg').classList.add('visible');
+  document.getElementById('setSheet').classList.add('visible');
+}
+function closeSettings(){
+  document.getElementById('setBg').classList.remove('visible');
+  document.getElementById('setSheet').classList.remove('visible');
+}
 function updSettings(){
   const ks=document.getElementById('setKeySt'),rb=document.getElementById('setRemBtn');
   if(S.hasKey){ks.innerHTML=`<span style="color:var(--ok)">${ih('check',12)}</span> Ready`;rb.style.display='inline-block'}
   else{ks.textContent='Not set';rb.style.display='none'}
-  populateSelect(document.getElementById('setModel'),S.presets,S.model);
+  try{populateSelect(document.getElementById('setModel'),S.presets||[],S.model||'')}catch(e){}
   document.getElementById('setMcpTgl').checked=S.mcpOn||S.mcp;
   const ms=document.getElementById('setMcpSt'),rr=document.getElementById('setRestart');
   if(S.mcp){ms.innerHTML=`<span style="color:var(--ok)">${ih('check',12)}</span> Connected`;rr.style.display='inline-block'}
   else if(S.mcpOn){ms.innerHTML=`<span style="color:var(--warn)">Starting...</span>`;rr.style.display='none'}
   else{ms.textContent='Disabled';rr.style.display='none'}
-  renderSrvCards();
+  try{renderSrvCards()}catch(e){}
   document.getElementById('setToolCt').textContent=(S.toolCount||0)+' of '+(S.totalToolCount||0)+' tools enabled';
 }
 function renderSrvCards(){
@@ -883,6 +894,12 @@ function renderInline(ct,text){
 /* ═══ Boot ═══ */
 window.addEventListener('pywebviewready',init);
 setTimeout(()=>{if(api())init()},500);
+// Escape key closes any open overlay/sheet
+document.addEventListener('keydown',function(e){
+  if(e.key==='Escape'){closeSettings();closeTools();closeChgKey();
+    document.getElementById('onbOverlay').classList.remove('visible');
+    document.getElementById('ctxMenu').classList.remove('visible')}
+});
 
 /* ═══ Trade API Auth ═══ */
 function updateTradeUI(){
