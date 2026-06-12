@@ -579,76 +579,51 @@ function api(){try{return window.pywebview&&window.pywebview.api}catch(e){return
 function _ldPct(pct){const b=document.getElementById('loadingBar');if(b)b.style.width=pct+'%'}
 function _ldTxt(txt){const t=document.getElementById('loadingText');if(t)t.textContent=txt}
 function _ldHide(){const s=document.getElementById('loadingScreen');if(s){s.classList.add('hidden');setTimeout(()=>{if(s.parentNode)s.remove()},400)}}
-// Global fallback: hide loading screen after 3 seconds no matter what
-setTimeout(function(){var ls=document.getElementById('loadingScreen');if(ls&&!ls.classList.contains('hidden')){ls.classList.add('hidden');setTimeout(function(){if(ls.parentNode)ls.remove()},400)}},3000);
-let _ready=false;
-let _initDone=false;
+// Global fallback: hide loading screen after 15 seconds no matter what
+setTimeout(function(){var ls=document.getElementById('loadingScreen');if(ls&&!ls.classList.contains('hidden')){_ldTxt('Ready');_ldHide()}},15000);
 
 async function init(){
-  if(_initDone)return;
-  // Step 1: Setup icons and hide loading IMMEDIATELY — no API calls needed
-  initIcons();
-  _ldPct(100);_ldTxt('Ready');
-  _ldHide();
-  _initDone=true;
+  _ldTxt('Starting...');
 
-  // Step 2: Try to get state from Python (non-blocking, graceful fallback)
-  const a=api();
+  // Step 1: Wait for Python API bridge to be ready (up to 10 seconds)
+  var a=null;
+  for(var i=0;i<20;i++){
+    a=api();
+    if(a)break;
+    await new Promise(function(r){setTimeout(r,500)});
+  }
   if(!a){
-    // API bridge not ready yet — retry silently up to 15 times
-    if(!window._ir)window._ir=0;
-    window._ir++;
-    if(window._ir<15){_initDone=false;setTimeout(init,400);return}
-    // Give up — UI is already visible, user can interact
-    console.warn('API bridge unavailable after 6 seconds');
-    updateUI();
+    // Bridge never came up — show UI anyway with limited functionality
+    _ldTxt('Limited mode');
+    initIcons();populateSelects();updateUI();_ldHide();
     return;
   }
 
-  try{S=await a.get_app_state()}catch(e){
-    // State unavailable — use defaults, UI still works
-    console.warn('get_app_state failed:',e);
-    updateUI();
-    return;
-  }
+  // Step 2: Load app state from Python (local only, no network)
+  _ldPct(20);_ldTxt('Loading state...');
+  try{var state=await a.get_app_state();if(state)Object.assign(S,state)}catch(e){}
 
+  // Step 3: Setup UI
+  _ldPct(40);_ldTxt('Preparing UI...');
+  initIcons();
   populateSelects();
   updateUI();
 
-  // Step 3: Load history (non-critical)
+  // Step 4: Load chat history from local database
+  _ldPct(60);_ldTxt('Loading history...');
   try{await loadHistory()}catch(e){}
   if(S.activeConvId){try{await loadConversation(S.activeConvId)}catch(e){}}
 
-  // Step 4: If API key exists, connect in background
-  if(S.hasKey){_connectInBackground()}
-  else{showOnb()}
-}
+  // Step 5: Done — hide loading screen, app is ready and idle
+  _ldPct(100);_ldTxt('Ready');
+  _ldHide();
 
-async function _connectInBackground(){
-  const a=api();if(!a)return;
-  _ready=false;
-
-  // Tell Python to start connecting in a background thread (returns immediately)
-  try{await a.start_background_connect()}catch(e){console.error('start_bg:',e);return}
-
-  // Poll get_app_state every 2s until gemini_ready
-  let polls=0;
-  const maxPolls=60; // 2 minutes max
-  const iv=setInterval(async()=>{
-    polls++;
-    try{
-      S=await a.get_app_state();
-      updateUI();
-      if((S.gemini_ready||S.gemini)&&!_ready){
-        _ready=true;
-        enableChat();
-        await loadHistory();
-        if(S.activeConvId)loadConversation(S.activeConvId);
-        clearInterval(iv);
-      }
-    }catch(e){}
-    if(polls>=maxPolls){clearInterval(iv);_ready=true}
-  },2000);
+  // Show onboarding ONLY if no API key
+  if(!S.hasKey){showOnb()}
+  else{
+    // Key exists — enable chat UI (connection happens when user sends first message)
+    enableChat();
+  }
 }
 window._onReady=function(data){
   _ready=true;
@@ -715,6 +690,8 @@ function enableChat(){document.getElementById('sendBtn').disabled=false;document
 async function sendMessage(){
   if(busy)return;const a=api();if(!a)return;
   const inp=document.getElementById('messageInput'),text=inp.value.trim();if(!text)return;
+  // Lazy connect on first message
+  if(!S.gemini){if(!await _ensureConnected())return}
   // Auto-create conversation if none active
   if(!S.activeConvId){
     const cr=await a.history_create();
@@ -725,12 +702,33 @@ async function sendMessage(){
   try{const r=await a.send_message(text);setThinking(false);
     if(r.tool_calls&&r.tool_calls.length>0)addToolBlock(r.tool_calls);
     if(r.type==='error')showErr(r.content);else addAsstMsg(r.content);
-    // Refresh sidebar after message saved
     await loadHistory();
   }catch(e){setThinking(false);showErr('Error: '+e)}
   busy=false;document.getElementById('sendBtn').disabled=false;
 }
-function sendExample(t){if(!S.gemini)return;document.getElementById('messageInput').value=t;sendMessage()}
+function sendExample(t){document.getElementById('messageInput').value=t;sendMessage()}
+async function _ensureConnected(){
+  // Lazy init: connect Gemini+MCP on first message
+  if(S.gemini)return true;
+  const a=api();if(!a)return false;
+  setThinking(true,'Connecting AI...');
+  try{
+    if(!S.hasKey)return false;
+    const g=await a.init_gemini(S.model||'gemini-2.5-flash');
+    if(!g.success){setThinking(false);showErr('AI connection failed: '+(g.error||'unknown'));return false}
+    S.gemini=true;
+    // Try MCP if enabled
+    try{await a.start_background_connect()}catch(e){}
+    // Poll until ready (max 30s)
+    for(var i=0;i<15;i++){
+      await new Promise(function(r){setTimeout(r,2000)});
+      try{var st=await a.get_app_state();Object.assign(S,st);updateUI()}catch(e){}
+      if(S.gemini_ready||S.gemini)break;
+    }
+    setThinking(false);
+    return true;
+  }catch(e){setThinking(false);showErr('Connection error: '+e.message);return false}
+}
 function handleKey(e){if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();sendMessage()}}
 function autoResize(el){el.style.height='auto';el.style.height=Math.min(el.scrollHeight,120)+'px'}
 
