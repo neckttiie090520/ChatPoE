@@ -750,12 +750,6 @@ async function _ensureConnected(){
     return true;
   }catch(e){setThinking(false);showErr('Connection error: '+e.message);return false}
 }
-      if(S.gemini_ready||S.gemini)break;
-    }
-    setThinking(false);
-    return true;
-  }catch(e){setThinking(false);showErr('Connection error: '+e.message);return false}
-}
 function handleKey(e){if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();sendMessage()}}
 function autoResize(el){el.style.height='auto';el.style.height=Math.min(el.scrollHeight,120)+'px'}
 
