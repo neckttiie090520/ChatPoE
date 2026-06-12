@@ -2,7 +2,7 @@
 ChatPoE — Desktop Chat App
 
 Minimal Windows desktop app using pywebview + Gemini + MCP.
-- Gemini API key stored securely via OS keyring (Windows Credential Manager).
+- Gemini API key stored in .chatpoe config file (%LOCALAPPDATA%/nextzus/ChatPoE/.chatpoe).
 - MCP servers are optional — chat works without them.
 - Chat history persisted in local SQLite under %LOCALAPPDATA%.
 - Auto-connects on launch when settings exist.
@@ -20,7 +20,6 @@ import threading
 from pathlib import Path
 from typing import Optional
 
-import keyring
 import webview
 
 sys.path.insert(0, str(Path(__file__).parent))
@@ -40,9 +39,6 @@ logging.getLogger("pywebview").setLevel(logging.CRITICAL)
 # ── Paths ──────────────────────────────────────────────────────
 THIS_DIR = Path(__file__).parent
 SETTINGS_FILE = THIS_DIR / "settings.json"
-KEYRING_SERVICE = "poe2-chat"
-KEYRING_USERNAME = "gemini-api-key"
-KEYRING_TRADE_USER = "poe-trade-session"
 
 # ── Data directory (Local AppData) ─────────────────────────────
 from platformdirs import PlatformDirs
@@ -112,62 +108,42 @@ def get_default_servers() -> list[dict]:
     return servers
 
 
-# ── Secure API Key Storage ─────────────────────────────────────
-# Try keyring first, fall back to local file if keyring fails
+# ── Settings & Key Storage ──────────────────────────────────────
 
-def _key_file() -> Path:
-    return DATA_DIR / ".api_key"
+SETTINGS_PATH = DATA_DIR / ".chatpoe"
+
+def _load_chatpoe() -> dict:
+    """Load .chatpoe config file from user data directory."""
+    try:
+        if SETTINGS_PATH.exists():
+            return json.loads(SETTINGS_PATH.read_text(encoding="utf-8"))
+    except Exception as e:
+        logger.warning(f"Failed to load .chatpoe: {e}")
+    return {}
+
+def _save_chatpoe(data: dict):
+    """Save .chatpoe config file."""
+    try:
+        SETTINGS_PATH.write_text(json.dumps(data, indent=2), encoding="utf-8")
+    except Exception as e:
+        logger.error(f"Failed to save .chatpoe: {e}")
+        raise
 
 def get_saved_api_key() -> Optional[str]:
-    """Retrieve API key. Try keyring first, then local file."""
-    # Try keyring
-    try:
-        key = keyring.get_password(KEYRING_SERVICE, KEYRING_USERNAME)
-        if key:
-            return key
-    except Exception:
-        pass
-    # Fallback: local file
-    try:
-        kf = _key_file()
-        if kf.exists():
-            return kf.read_text(encoding="utf-8").strip() or None
-    except Exception:
-        pass
-    return None
+    """Retrieve API key from .chatpoe config."""
+    return _load_chatpoe().get("api_key")
 
-
-def save_api_key_secure(api_key: str):
-    """Store API key. Try keyring first, then local file."""
-    saved = False
-    try:
-        keyring.set_password(KEYRING_SERVICE, KEYRING_USERNAME, api_key)
-        saved = True
-    except Exception as e:
-        logger.warning(f"Keyring save failed, using file fallback: {e}")
-    # Always also save to file as backup
-    try:
-        _key_file().write_text(api_key, encoding="utf-8")
-    except Exception as e:
-        logger.warning(f"File save also failed: {e}")
-        if not saved:
-            raise
-
+def save_api_key(api_key: str):
+    """Store API key in .chatpoe config."""
+    data = _load_chatpoe()
+    data["api_key"] = api_key
+    _save_chatpoe(data)
 
 def remove_saved_api_key():
-    """Remove API key from all storage locations."""
-    try:
-        keyring.delete_password(KEYRING_SERVICE, KEYRING_USERNAME)
-    except keyring.errors.PasswordDeleteError:
-        pass
-    except Exception:
-        pass
-    try:
-        kf = _key_file()
-        if kf.exists():
-            kf.unlink()
-    except Exception:
-        pass
+    """Remove API key from .chatpoe config."""
+    data = _load_chatpoe()
+    data.pop("api_key", None)
+    _save_chatpoe(data)
 
 
 def mask_api_key(key: str) -> str:
@@ -180,24 +156,22 @@ def mask_api_key(key: str) -> str:
 # ── Trade Session Storage ──────────────────────────────────────
 
 def get_saved_poesessid() -> Optional[str]:
-    """Retrieve POESESSID from OS keyring. Returns None if not set."""
-    try:
-        return keyring.get_password(KEYRING_SERVICE, KEYRING_TRADE_USER)
-    except Exception:
-        return None
+    """Retrieve POESESSID from .chatpoe config."""
+    return _load_chatpoe().get("poesessid")
 
 
 def save_poesessid(poesessid: str):
-    """Store POESESSID in OS keyring."""
-    keyring.set_password(KEYRING_SERVICE, KEYRING_TRADE_USER, poesessid)
+    """Store POESESSID in .chatpoe config."""
+    data = _load_chatpoe()
+    data["poesessid"] = poesessid
+    _save_chatpoe(data)
 
 
 def remove_poesessid():
-    """Remove POESESSID from OS keyring."""
-    try:
-        keyring.delete_password(KEYRING_SERVICE, KEYRING_TRADE_USER)
-    except keyring.errors.PasswordDeleteError:
-        pass
+    """Remove POESESSID from .chatpoe config."""
+    data = _load_chatpoe()
+    data.pop("poesessid", None)
+    _save_chatpoe(data)
 
 
 def mask_poesessid(sid: str) -> str:
@@ -232,14 +206,14 @@ def load_settings() -> dict:
                      "command": raw["mcp_command"], "args": [],
                      "enabled": True, "builtin": True}
                 ]
-            # Migration: old format had api_key as base64 -> move to keyring
+            # Migration: old format had api_key as base64 -> move to .chatpoe
             if "api_key" in raw and raw["api_key"] and not get_saved_api_key():
                 try:
                     import base64
                     decoded = base64.b64decode(raw["api_key"]).decode("utf-8")
                     if decoded and len(decoded) > 10:
-                        save_api_key_secure(decoded)
-                        logger.info("Migrated API key from settings.json to keyring")
+                        save_api_key(decoded)
+                        logger.info("Migrated API key from settings.json to .chatpoe")
                 except Exception as e:
                     logger.warning(f"Failed to migrate API key: {e}")
             return defaults
@@ -343,17 +317,17 @@ class Api:
     # ── API Key ────────────────────────────────────────────────
 
     def validate_and_save_key(self, api_key: str) -> dict:
-        """Validate API key, save to keyring if valid. Returns {valid, error, masked}."""
+        """Validate API key, save to .chatpoe if valid. Returns {valid, error, masked}."""
         result = validate_api_key(api_key)
         if result["valid"]:
-            save_api_key_secure(api_key)
+            save_api_key(api_key)
             return {"valid": True, "error": None, "masked": mask_api_key(api_key)}
         return {"valid": False, "error": result["error"], "masked": ""}
 
     def save_key_direct(self, api_key: str) -> dict:
-        """Save API key to keyring without validation. Validates on first use."""
+        """Save API key to .chatpoe without validation. Validates on first use."""
         try:
-            save_api_key_secure(api_key)
+            save_api_key(api_key)
             return {"saved": True, "masked": mask_api_key(api_key)}
         except Exception as e:
             return {"saved": False, "error": str(e)}
@@ -430,7 +404,7 @@ class Api:
         except json.JSONDecodeError as e:
             return {"success": False, "error": f"Invalid server config: {e}"}
 
-        # Inject POESESSID from keyring into MCP server environment
+        # Inject POESESSID from .chatpoe into MCP server environment
         poesessid = get_saved_poesessid()
         env_extra = {"POESESSID": poesessid} if poesessid else None
 
@@ -656,7 +630,7 @@ class Api:
             return {"success": False, "error": str(e)}
 
     def _restart_mcp_with_poesessid(self):
-        """Restart MCP servers with current POESESSID from keyring."""
+        """Restart MCP servers with current POESESSID from .chatpoe."""
         if not self.engine or not self.engine.mcp_connected:
             return
         self._ensure_loop()
