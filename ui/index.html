@@ -363,7 +363,7 @@ footer.sb{height:var(--statusbar);background:var(--panel);border-top:1px solid v
 </div>
 
 <footer class="sb">
-  <div class="sb-sec"><span class="sd x" id="sbDot"></span><span id="sbStatus">Setting up...</span></div>
+  <div class="sb-sec"><span class="sd x" id="sbDot"></span><span id="sbStatus">Ready</span></div>
   <div class="sb-sec"><span id="sbTools" style="display:none"></span><span class="sep">·</span><span>nextzus</span></div>
 </footer>
 
@@ -575,42 +575,49 @@ function api(){try{return window.pywebview&&window.pywebview.api}catch(e){return
 function _ldPct(pct){const b=document.getElementById('loadingBar');if(b)b.style.width=pct+'%'}
 function _ldTxt(txt){const t=document.getElementById('loadingText');if(t)t.textContent=txt}
 function _ldHide(){const s=document.getElementById('loadingScreen');if(s){s.classList.add('hidden');setTimeout(()=>{if(s.parentNode)s.remove()},400)}}
-// Global fallback: hide loading screen after 8 seconds no matter what
-setTimeout(function(){var ls=document.getElementById('loadingScreen');if(ls&&!ls.classList.contains('hidden')){ls.classList.add('hidden');setTimeout(function(){if(ls.parentNode)ls.remove()},400)}},8000);
+// Global fallback: hide loading screen after 3 seconds no matter what
+setTimeout(function(){var ls=document.getElementById('loadingScreen');if(ls&&!ls.classList.contains('hidden')){ls.classList.add('hidden');setTimeout(function(){if(ls.parentNode)ls.remove()},400)}},3000);
 let _ready=false;
+let _initDone=false;
 
 async function init(){
+  if(_initDone)return;
+  // Step 1: Setup icons and hide loading IMMEDIATELY — no API calls needed
+  initIcons();
+  _ldPct(100);_ldTxt('Ready');
+  _ldHide();
+  _initDone=true;
+
+  // Step 2: Try to get state from Python (non-blocking, graceful fallback)
   const a=api();
   if(!a){
-    // API not ready — try again in 300ms (up to 5 attempts)
-    if(!window._initRetries)window._initRetries=0;
-    window._initRetries++;
-    if(window._initRetries<10){setTimeout(init,300)}
+    // API bridge not ready yet — retry silently up to 15 times
+    if(!window._ir)window._ir=0;
+    window._ir++;
+    if(window._ir<15){_initDone=false;setTimeout(init,400);return}
+    // Give up — UI is already visible, user can interact
+    console.warn('API bridge unavailable after 6 seconds');
+    updateUI();
     return;
   }
-  // Verify API bridge works
-  try{const r=await a.ping()}catch(e){_ldTxt('Bridge error');setTimeout(init,500);return}
-  try{
-    _ldPct(10);_ldTxt('Loading...');
-    S=await a.get_app_state();
-  }catch(e){
-    console.error('init get_app_state:',e);
-    _ldHide();return;
+
+  try{S=await a.get_app_state()}catch(e){
+    // State unavailable — use defaults, UI still works
+    console.warn('get_app_state failed:',e);
+    updateUI();
+    return;
   }
 
-  // Basic setup — always runs, fast
-  initIcons();
   populateSelects();
   updateUI();
 
-  // Hide loading IMMEDIATELY — user can see and interact with UI
-  _ldPct(100);_ldTxt('Ready');
-  _ldHide();
+  // Step 3: Load history (non-critical)
+  try{await loadHistory()}catch(e){}
+  if(S.activeConvId){try{await loadConversation(S.activeConvId)}catch(e){}}
 
-  if(!S.hasKey){showOnb();return}
-
-  // Connection happens in background (non-blocking)
-  _connectInBackground();
+  // Step 4: If API key exists, connect in background
+  if(S.hasKey){_connectInBackground()}
+  else{showOnb()}
 }
 
 async function _connectInBackground(){
@@ -733,10 +740,10 @@ function updPills(){
 }
 function updSB(){
   const dot=document.getElementById('sbDot'),st=document.getElementById('sbStatus'),tools=document.getElementById('sbTools');
-  if(!S.hasKey){dot.className='sd x';st.textContent='Gemini setup required';tools.style.display='none'}
+  if(!S.hasKey){dot.className='sd x';st.textContent='Set up API key in Settings';tools.style.display='none'}
   else if(S.gemini&&S.mcp){dot.className='sd g';st.textContent='AI Ready';tools.textContent=(S.toolCount||0)+' of '+(S.totalToolCount||0)+' tools enabled';tools.style.display='inline'}
   else if(S.gemini){dot.className='sd g';st.textContent='AI Ready';tools.textContent='Build tools unavailable';tools.style.display='inline'}
-  else{dot.className='sd r';st.textContent='AI unavailable';tools.style.display='none'}
+  else{dot.className='sd y';st.textContent='Connecting...';tools.style.display='none'}
 }
 function setThinking(on,text){const t=document.getElementById('thinking');t.classList.toggle('visible',on);document.getElementById('thinkingText').textContent=text||'Analyzing your build...';t.setAttribute('aria-hidden',!on)}
 
