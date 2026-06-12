@@ -113,25 +113,60 @@ def get_default_servers() -> list[dict]:
 
 
 # ── Secure API Key Storage ─────────────────────────────────────
+# Try keyring first, fall back to local file if keyring fails
+
+def _key_file() -> Path:
+    return DATA_DIR / ".api_key"
 
 def get_saved_api_key() -> Optional[str]:
-    """Retrieve API key from OS keyring. Returns None if not set."""
+    """Retrieve API key. Try keyring first, then local file."""
+    # Try keyring
     try:
-        return keyring.get_password(KEYRING_SERVICE, KEYRING_USERNAME)
+        key = keyring.get_password(KEYRING_SERVICE, KEYRING_USERNAME)
+        if key:
+            return key
     except Exception:
-        return None
+        pass
+    # Fallback: local file
+    try:
+        kf = _key_file()
+        if kf.exists():
+            return kf.read_text(encoding="utf-8").strip() or None
+    except Exception:
+        pass
+    return None
 
 
 def save_api_key_secure(api_key: str):
-    """Store API key in OS keyring."""
-    keyring.set_password(KEYRING_SERVICE, KEYRING_USERNAME, api_key)
+    """Store API key. Try keyring first, then local file."""
+    saved = False
+    try:
+        keyring.set_password(KEYRING_SERVICE, KEYRING_USERNAME, api_key)
+        saved = True
+    except Exception as e:
+        logger.warning(f"Keyring save failed, using file fallback: {e}")
+    # Always also save to file as backup
+    try:
+        _key_file().write_text(api_key, encoding="utf-8")
+    except Exception as e:
+        logger.warning(f"File save also failed: {e}")
+        if not saved:
+            raise
 
 
 def remove_saved_api_key():
-    """Remove API key from OS keyring."""
+    """Remove API key from all storage locations."""
     try:
         keyring.delete_password(KEYRING_SERVICE, KEYRING_USERNAME)
     except keyring.errors.PasswordDeleteError:
+        pass
+    except Exception:
+        pass
+    try:
+        kf = _key_file()
+        if kf.exists():
+            kf.unlink()
+    except Exception:
         pass
 
 
