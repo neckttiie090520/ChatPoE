@@ -359,7 +359,7 @@ footer.sb{height:var(--statusbar);background:var(--panel);border-top:1px solid v
 
 <footer class="sb">
   <div class="sb-sec"><span class="sd x" id="sbDot"></span><span id="sbStatus">Ready</span></div>
-  <div class="sb-sec"><span id="sbTools" style="display:none"></span><span class="sep">·</span><span>nextzus</span></div>
+  <div class="sb-sec"><span id="sbUsage" style="display:none"></span><span id="sbTools" style="display:none"></span><span class="sep">·</span><span>nextzus</span></div>
 </footer>
 
 <!-- Onboarding -->
@@ -565,6 +565,46 @@ function _ldHide(){const s=document.getElementById('loadingScreen');if(s){s.clas
 // Global fallback: hide loading screen after 15 seconds no matter what
 setTimeout(function(){var ls=document.getElementById('loadingScreen');if(ls&&!ls.classList.contains('hidden')){_ldTxt('Ready');_ldHide()}},15000);
 
+/* ═══ Usage Tracker ═══ */
+var _usage={rpm:[],rpd:0,rpdDate:''};
+function _loadUsage(){
+  try{
+    var d=localStorage.getItem('poe2_usage');
+    if(d){var o=JSON.parse(d);_usage.rpd=o.rpd||0;_usage.rpdDate=o.rpdDate||''}
+  }catch(e){}
+  // Reset daily count if date changed
+  var today=new Date().toISOString().slice(0,10);
+  if(_usage.rpdDate!==today){_usage.rpd=0;_usage.rpdDate=today}
+}
+function _saveUsage(){
+  try{localStorage.setItem('poe2_usage',JSON.stringify({rpd:_usage.rpd,rpdDate:_usage.rpdDate}))}catch(e){}
+}
+function _recordRequest(){
+  var now=Date.now();
+  _usage.rpm.push(now);
+  _usage.rpd++;
+  // Clean RPM entries older than 60 seconds
+  _usage.rpm=_usage.rpm.filter(function(t){return now-t<60000});
+  _saveUsage();
+  _updUsageUI();
+}
+function _updUsageUI(){
+  // Clean old RPM entries
+  var now=Date.now();
+  _usage.rpm=_usage.rpm.filter(function(t){return now-t<60000});
+  var rpm=_usage.rpm.length;
+  var rpd=_usage.rpd;
+  var today=new Date().toISOString().slice(0,10);
+  if(_usage.rpdDate!==today){rpd=0;_usage.rpd=0;_usage.rpdDate=today}
+  var el=document.getElementById('sbUsage');
+  if(!el)return;
+  if(rpd>0){
+    el.innerHTML='<span style="color:'+(rpm>=12?'var(--err)':rpm>=8?'var(--warn)':'var(--muted)')+'">'+rpm+'/15 rpm</span> · <span style="color:'+(rpd>=1200?'var(--err)':rpd>=800?'var(--warn)':'var(--muted)')+'">'+rpd+'/1500 today</span>';
+    el.style.display='inline';
+  }else{el.style.display='none'}
+}
+_loadUsage();
+
 async function init(){
   _ldTxt('Starting...');
 
@@ -681,6 +721,7 @@ async function sendMessage(){
   }
   inp.value='';autoResize(inp);addUserMsg(text);setThinking(true);
   document.getElementById('sendBtn').disabled=true;busy=true;
+  _recordRequest(); // Track usage
   try{const r=await a.send_message(text);setThinking(false);
     if(r.tool_calls&&r.tool_calls.length>0)addToolBlock(r.tool_calls);
     if(r.type==='error')showErr(r.content);else addAsstMsg(r.content);
@@ -693,18 +734,36 @@ async function _ensureConnected(){
   // Lazy init: connect Gemini+MCP on first message
   if(S.gemini)return true;
   const a=api();if(!a)return false;
-  setThinking(true,'Connecting AI...');
   try{
-    if(!S.hasKey)return false;
-    const g=await a.init_gemini(S.model||'gemini-2.5-flash');
+    if(!S.hasKey){showErr('Please set up your API key in Settings first.');return false}
+
+    // Step 1: Connect Gemini AI
+    _updSB('connecting','Connecting Gemini...');
+    setThinking(true,'Connecting Gemini...');
+    const g=await a.init_gemini('gemini-2.5-flash');
     if(!g.success){setThinking(false);showErr('AI connection failed: '+(g.error||'unknown'));return false}
     S.gemini=true;
-    // Try MCP if enabled
+    enableChat();
+
+    // Step 2: Start MCP in background
+    _updSB('connecting','Loading MCP tools...');
+    setThinking(true,'Loading MCP tools...');
     try{await a.start_background_connect()}catch(e){}
-    // Poll until ready (max 30s)
-    for(var i=0;i<15;i++){
+
+    // Step 3: Poll until MCP tools loaded (max 60s)
+    for(var i=0;i<30;i++){
       await new Promise(function(r){setTimeout(r,2000)});
       try{var st=await a.get_app_state();Object.assign(S,st);updateUI()}catch(e){}
+      if(S.mcp_connected||S.mcp){
+        setThinking(false);
+        return true;
+      }
+      setThinking(true,'Loading MCP tools... ('+(i*2)+'s)');
+    }
+    setThinking(false);
+    return true;
+  }catch(e){setThinking(false);showErr('Connection error: '+e.message);return false}
+}
       if(S.gemini_ready||S.gemini)break;
     }
     setThinking(false);
@@ -731,9 +790,14 @@ function updPills(){
 function updSB(){
   const dot=document.getElementById('sbDot'),st=document.getElementById('sbStatus'),tools=document.getElementById('sbTools');
   if(!S.hasKey){dot.className='sd x';st.textContent='Set up API key in Settings';tools.style.display='none'}
-  else if(S.gemini&&S.mcp){dot.className='sd g';st.textContent='AI Ready';tools.textContent=(S.toolCount||0)+' of '+(S.totalToolCount||0)+' tools enabled';tools.style.display='inline'}
-  else if(S.gemini){dot.className='sd g';st.textContent='AI Ready';tools.textContent='Build tools unavailable';tools.style.display='inline'}
-  else{dot.className='sd y';st.textContent='Connecting...';tools.style.display='none'}
+  else if(S.gemini&&S.mcp){dot.className='sd g';st.textContent='AI Ready';tools.textContent=(S.toolCount||0)+' of '+(S.totalToolCount||0)+' tools';tools.style.display='inline'}
+  else if(S.gemini){dot.className='sd g';st.textContent='AI Ready';tools.textContent='MCP loading...';tools.style.display='inline'}
+  else{dot.className='sd y';st.textContent='Ready';tools.style.display='none'}
+  _updUsageUI();
+}
+function _updSB(type,text){
+  const dot=document.getElementById('sbDot'),st=document.getElementById('sbStatus');
+  if(type==='connecting'){dot.className='sd y';st.textContent=text||'Connecting...'}
 }
 function setThinking(on,text){const t=document.getElementById('thinking');t.classList.toggle('visible',on);document.getElementById('thinkingText').textContent=text||'Analyzing your build...';t.setAttribute('aria-hidden',!on)}
 
