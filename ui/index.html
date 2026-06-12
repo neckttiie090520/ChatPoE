@@ -675,7 +675,7 @@ async function onbSave(){
     const r=await a.save_key_direct(key);
     if(r.saved){
       document.getElementById('onbOverlay').classList.remove('visible');
-      S.hasKey=true;S.model=model;
+      S.hasKey=true;
       updateUI();
       // Try to connect in background
       try{
