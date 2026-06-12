@@ -607,44 +607,30 @@ _loadUsage();
 
 async function init(){
   _ldTxt('Starting...');
+  var a=api();
 
-  // Step 1: Wait for Python API bridge to be ready (up to 10 seconds)
-  var a=null;
-  for(var i=0;i<20;i++){
-    a=api();
-    if(a)break;
-    await new Promise(function(r){setTimeout(r,500)});
-  }
-  if(!a){
-    // Bridge never came up — show UI anyway with limited functionality
-    _ldTxt('Limited mode');
-    initIcons();populateSelects();updateUI();_ldHide();
-    return;
-  }
-
-  // Step 2: Load app state from Python (local only, no network)
+  // Step 1: Load app state from Python (local only, no network)
   _ldPct(20);_ldTxt('Loading state...');
   try{var state=await a.get_app_state();if(state)Object.assign(S,state)}catch(e){}
 
-  // Step 3: Setup UI
+  // Step 2: Setup UI
   _ldPct(40);_ldTxt('Preparing UI...');
   initIcons();
   populateSelects();
   updateUI();
 
-  // Step 4: Load chat history from local database
+  // Step 3: Load chat history from local database
   _ldPct(60);_ldTxt('Loading history...');
   try{await loadHistory()}catch(e){}
   if(S.activeConvId){try{await loadConversation(S.activeConvId)}catch(e){}}
 
-  // Step 5: Done — hide loading screen, app is ready and idle
+  // Step 4: Done — hide loading screen, app is ready and idle
   _ldPct(100);_ldTxt('Ready');
   _ldHide();
 
   // Show onboarding ONLY if no API key
   if(!S.hasKey){showOnb()}
   else{
-    // Key exists — enable chat UI (connection happens when user sends first message)
     enableChat();
   }
 }
@@ -946,8 +932,26 @@ function renderInline(ct,text){
 }
 
 /* ═══ Boot ═══ */
-window.addEventListener('pywebviewready',init);
-setTimeout(()=>{if(api())init()},500);
+var _booted=false;
+function _tryBoot(){
+  if(_booted)return;
+  if(api()){_booted=true;init();return}
+  // Keep retrying every 300ms, up to 30 attempts (9 seconds)
+  if(!window._bc)window._bc=0;
+  window._bc++;
+  if(window._bc<30){setTimeout(_tryBoot,300)}
+  else{
+    // Give up — show UI without backend
+    _booted=true;
+    _ldTxt('Offline mode');
+    initIcons();updateUI();_ldHide();
+  }
+}
+window.addEventListener('pywebviewready',function(){if(!_booted){_booted=true;init()}});
+setTimeout(_tryBoot,200);
+setTimeout(_tryBoot,800);
+setTimeout(_tryBoot,1500);
+setTimeout(_tryBoot,3000);
 // Escape key closes any open overlay/sheet
 document.addEventListener('keydown',function(e){
   if(e.key==='Escape'){closeSettings();closeTools();closeChgKey();
