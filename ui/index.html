@@ -574,31 +574,79 @@ function api(){try{return window.pywebview&&window.pywebview.api}catch(e){return
 /* ═══ Boot ═══ */
 function _ldPct(pct){const b=document.getElementById('loadingBar');if(b)b.style.width=pct+'%'}
 function _ldTxt(txt){const t=document.getElementById('loadingText');if(t)t.textContent=txt}
-function _ldHide(){const s=document.getElementById('loadingScreen');if(s){s.classList.add('hidden');setTimeout(()=>s.remove(),400)}}
+function _ldHide(){const s=document.getElementById('loadingScreen');if(s){s.classList.add('hidden');setTimeout(()=>{if(s.parentNode)s.remove()},400)}}
+// Global fallback: hide loading screen after 8 seconds no matter what
+setTimeout(function(){var ls=document.getElementById('loadingScreen');if(ls&&!ls.classList.contains('hidden')){ls.classList.add('hidden');setTimeout(function(){if(ls.parentNode)ls.remove()},400)}},8000);
+let _ready=false;
 
 async function init(){
-  const a=api();if(!a)return;
+  const a=api();
+  if(!a){
+    // API not ready — try again in 300ms (up to 5 attempts)
+    if(!window._initRetries)window._initRetries=0;
+    window._initRetries++;
+    if(window._initRetries<10){setTimeout(init,300)}
+    return;
+  }
+  // Verify API bridge works
+  try{const r=await a.ping()}catch(e){_ldTxt('Bridge error');setTimeout(init,500);return}
   try{
-    _ldPct(10);_ldTxt('Loading app state...');
+    _ldPct(10);_ldTxt('Loading...');
     S=await a.get_app_state();
-    _ldPct(25);
-  }catch(e){_ldHide();return}
+  }catch(e){
+    console.error('init get_app_state:',e);
+    _ldHide();return;
+  }
+
+  // Basic setup — always runs, fast
   initIcons();
   populateSelects();
-  if(!S.hasKey){_ldPct(100);_ldHide();showOnb();return}
   updateUI();
-  // Fire background connect (non-blocking) and wait for callback
-  _ldPct(40);_ldTxt('Connecting AI...');
-  const bg=await a.auto_connect_background();
-  // UI will be updated by window._onReady callback
+
+  // Hide loading IMMEDIATELY — user can see and interact with UI
+  _ldPct(100);_ldTxt('Ready');
+  _ldHide();
+
+  if(!S.hasKey){showOnb();return}
+
+  // Connection happens in background (non-blocking)
+  _connectInBackground();
+}
+
+async function _connectInBackground(){
+  const a=api();if(!a)return;
+  _ready=false;
+
+  // Tell Python to start connecting in a background thread (returns immediately)
+  try{await a.start_background_connect()}catch(e){console.error('start_bg:',e);return}
+
+  // Poll get_app_state every 2s until gemini_ready
+  let polls=0;
+  const maxPolls=60; // 2 minutes max
+  const iv=setInterval(async()=>{
+    polls++;
+    try{
+      S=await a.get_app_state();
+      updateUI();
+      if((S.gemini_ready||S.gemini)&&!_ready){
+        _ready=true;
+        enableChat();
+        await loadHistory();
+        if(S.activeConvId)loadConversation(S.activeConvId);
+        clearInterval(iv);
+      }
+    }catch(e){}
+    if(polls>=maxPolls){clearInterval(iv);_ready=true}
+  },2000);
 }
 window._onReady=function(data){
-  if(data.state){
+  _ready=true;
+  if(data&&data.state){
     try{Object.assign(S,data.state)}catch(e){}
   }
   _ldPct(70);_ldTxt('Loading history...');
   updateUI();
-  if(S.gemini)enableChat();
+  if(S.gemini_ready||S.gemini)enableChat();
   loadHistory().then(()=>{
     if(S.activeConvId)loadConversation(S.activeConvId);
     _ldPct(100);_ldTxt('Ready');
@@ -628,8 +676,10 @@ async function onbSave(){
   btn.disabled=true;btn.textContent='Checking API key...';err.style.display='none';
   const r=await a.validate_and_save_key(key);
   if(r.valid){document.getElementById('onbOverlay').classList.remove('visible');S.hasKey=true;S.model=model;
-    const g=await a.init_gemini(model);if(g.success){S.gemini=true;S.model=g.model;updateUI();enableChat();
-      await a.auto_connect();try{S=await a.get_app_state()}catch(e){}updateUI();}
+    const g=await a.init_gemini(model);
+    if(g.success){S.gemini=true;S.model=g.model;updateUI();enableChat();
+      // Start MCP connection in background (non-blocking)
+      _connectInBackground();}
     await loadHistory();
   }else{err.textContent=r.error||'Invalid API key';err.style.display='block';btn.disabled=false;btn.textContent='Save and continue'}
 }
@@ -874,7 +924,7 @@ window._tradeAuthResult=function(result){
   btn.disabled=false;_tradeBusy=false;
   if(result.success){
     S.tradeAuth={connected:true,masked:result.masked};
-    try{S=Object.assign(S,api().get_app_state()?{}:{})}catch(e){}
+    try{const ns=api().get_app_state();if(ns)Object.assign(S,ns)}catch(e){}
     updateTradeUI();
   }else{
     err.textContent=result.error||'Authentication failed';
@@ -993,11 +1043,18 @@ async function loadConversation(id){
     chat.innerHTML='';
     // Render messages
     (r.messages||[]).forEach(msg=>{
-      if(msg.role==='user') addUserMsg(msg.content);
+      if(msg.role==='user') addUserMsg(msg.text);
       else if(msg.role==='assistant'){
-        // Render tool calls if any
-        if(msg.tool_calls&&msg.tool_calls.length>0) addToolBlock(msg.tool_calls);
-        if(msg.content) addAsstMsg(msg.content);
+        // Render tool calls from history (fields: raw_name, args_json, friendly_label)
+        if(msg.tool_calls&&msg.tool_calls.length>0){
+          const liveTcs=msg.tool_calls.map(tc=>{
+            let args={};
+            try{if(tc.args_json)args=JSON.parse(tc.args_json)}catch(e){}
+            return{name:tc.raw_name||tc.name,args};
+          });
+          addToolBlock(liveTcs);
+        }
+        if(msg.text) addAsstMsg(msg.text);
       }
     });
     // Show chat area

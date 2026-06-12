@@ -34,8 +34,7 @@ logging.basicConfig(
     handlers=[logging.StreamHandler(sys.stderr)],
 )
 logger = logging.getLogger("poe2-chat")
-
-# Suppress pywebview/WebView2 noise (WinForms accessibility enumeration, COM threading)
+# Suppress pywebview's noisy WinForms/WebView2 accessibility errors (harmless on Windows)
 logging.getLogger("pywebview").setLevel(logging.CRITICAL)
 
 # ── Paths ──────────────────────────────────────────────────────
@@ -265,6 +264,12 @@ class Api:
             self._loop = asyncio.new_event_loop()
             t = threading.Thread(target=self._run_loop, daemon=True)
             t.start()
+
+    # ── Diagnostics ────────────────────────────────────────────
+
+    def ping(self) -> str:
+        """Simple ping for JS to verify API bridge works."""
+        return "pong"
 
     def _run_loop(self):
         asyncio.set_event_loop(self._loop)
@@ -890,8 +895,10 @@ class Api:
     def auto_connect_background(self) -> dict:
         """Non-blocking auto-connect. Returns immediately, calls window._onReady() when done."""
         def _run():
+            logger.info("Background auto_connect starting...")
             try:
                 result = self.auto_connect()
+                logger.info(f"Background auto_connect done: gemini={result.get('gemini')} mcp={result.get('mcp')}")
             except Exception as e:
                 logger.error(f"Background auto_connect failed: {e}")
                 result = {"gemini": False, "mcp": False, "error": str(e)}
@@ -902,11 +909,28 @@ class Api:
                 state = {}
             if self.window:
                 try:
-                    self.window.evaluate_js(
-                        f'window._onReady({json.dumps({"result": result, "state": state})})'
-                    )
-                except Exception:
-                    pass
+                    payload = json.dumps({"result": result, "state": state})
+                    self.window.evaluate_js(f'window._onReady({payload})')
+                    logger.info("Notified UI via _onReady callback")
+                except Exception as e:
+                    logger.error(f"evaluate_js failed: {e}")
+            else:
+                logger.warning("No window reference, cannot notify UI")
+
+        t = threading.Thread(target=_run, daemon=True)
+        t.start()
+        logger.info("auto_connect_background: thread started")
+        return {"started": True}
+
+    def start_background_connect(self) -> dict:
+        """Start auto_connect in a background thread. Returns immediately.
+        JS polls get_app_state() to detect when connection completes."""
+        def _run():
+            try:
+                self.auto_connect()
+                logger.info("Background connect completed")
+            except Exception as e:
+                logger.error(f"Background connect failed: {e}")
 
         t = threading.Thread(target=_run, daemon=True)
         t.start()
