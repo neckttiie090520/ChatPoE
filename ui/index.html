@@ -667,26 +667,25 @@ function showOnb(){document.getElementById('onbOverlay').classList.add('visible'
 async function onbSave(){
   const a=api(),key=document.getElementById('onbKey').value.trim();
   const btn=document.getElementById('onbBtn'),err=document.getElementById('onbErr');
-  if(!a){err.textContent='App not ready yet, please wait...';err.style.display='block';return}
+  if(!a){err.textContent='App not ready, please wait...';err.style.display='block';return}
   if(!key){err.textContent='Please enter an API key';err.style.display='block';return}
   btn.disabled=true;btn.textContent='Saving...';err.style.display='none';
   try{
-    // Save key immediately — validate on first use
     const r=await a.save_key_direct(key);
-    if(r.saved){
-      document.getElementById('onbOverlay').classList.remove('visible');
-      S.hasKey=true;
-      updateUI();
-      // Try to connect in background
-      try{
-        const g=await a.init_gemini('gemini-2.5-flash');
-        if(g.success){S.gemini=true;updateUI();enableChat();}
-      }catch(e){console.error('init_gemini:',e);updateUI()}
-      try{await loadHistory()}catch(e){}
-    }else{
-      err.textContent=r.error||'Failed to save';err.style.display='block';
-      btn.disabled=false;btn.textContent='Save and continue';
-    }
+    if(!r.saved){err.textContent=r.error||'Failed to save';err.style.display='block';btn.disabled=false;btn.textContent='Save and continue';return}
+    // Key saved — refresh full state from Python
+    try{var st=await a.get_app_state();if(st)Object.assign(S,st)}catch(e){S.hasKey=true}
+    document.getElementById('onbOverlay').classList.remove('visible');
+    updateUI();
+    enableChat();
+    // Try connecting Gemini
+    try{
+      btn.textContent='Connecting AI...';
+      const g=await a.init_gemini('gemini-2.5-flash');
+      if(g.success){S.gemini=true}
+    }catch(e){console.error('init_gemini:',e)}
+    updateUI();
+    try{await loadHistory()}catch(e){}
   }catch(e){
     err.textContent='Error: '+e.message;err.style.display='block';
     btn.disabled=false;btn.textContent='Save and continue';
