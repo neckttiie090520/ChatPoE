@@ -315,6 +315,14 @@ class Api:
             return {"valid": True, "error": None, "masked": mask_api_key(api_key)}
         return {"valid": False, "error": result["error"], "masked": ""}
 
+    def save_key_direct(self, api_key: str) -> dict:
+        """Save API key to keyring without validation. Validates on first use."""
+        try:
+            save_api_key_secure(api_key)
+            return {"saved": True, "masked": mask_api_key(api_key)}
+        except Exception as e:
+            return {"saved": False, "error": str(e)}
+
     def remove_key(self) -> dict:
         """Remove saved API key and reset engine."""
         remove_saved_api_key()

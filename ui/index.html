@@ -564,7 +564,11 @@ function tl(name){return TM[name]?TM[name].l:name.replace(/_/g,' ').replace(/\b\
 function td(name){return TM[name]?TM[name].d:''}
 
 /* ═══ State ═══ */
-let S={hasKey:false,gemini:false,mcp:false,model:'',mcpOn:false,presets:[],servers:[],tools:null,allTools:[],srvSt:{},activeConvId:null,dataDir:'',tradeAuth:{connected:false,masked:''}};
+let S={hasKey:false,gemini:false,mcp:false,model:'',mcpOn:false,presets:[
+  {id:"gemini-2.5-flash",label:"Gemini 2.5 Flash",description:"Fast and capable for build analysis",badge:"Recommended"},
+  {id:"gemini-2.5-flash-lite-preview-06-2025",label:"Gemini 2.5 Flash-Lite",description:"Low latency for quick questions",badge:"Fastest"},
+  {id:"gemini-2.0-flash",label:"Gemini 2.0 Flash",description:"Compatible fallback",badge:"Legacy"}
+],servers:[],tools:null,allTools:[],srvSt:{},activeConvId:null,dataDir:'',tradeAuth:{connected:false,masked:''}};
 let busy=false;
 let _sidebarOpen=false;
 let _convList=[];
@@ -681,18 +685,29 @@ async function onbSave(){
   const btn=document.getElementById('onbBtn'),err=document.getElementById('onbErr');
   if(!a){err.textContent='App not ready yet, please wait...';err.style.display='block';return}
   if(!key){err.textContent='Please enter an API key';err.style.display='block';return}
-  btn.disabled=true;btn.textContent='Checking API key...';err.style.display='none';
+  btn.disabled=true;btn.textContent='Saving...';err.style.display='none';
   try{
-    const r=await a.validate_and_save_key(key);
-    if(r.valid){document.getElementById('onbOverlay').classList.remove('visible');S.hasKey=true;S.model=model;
+    // Save key immediately — validate on first use
+    const r=await a.save_key_direct(key);
+    if(r.saved){
+      document.getElementById('onbOverlay').classList.remove('visible');
+      S.hasKey=true;S.model=model;
+      updateUI();
+      // Try to connect in background
       try{
         const g=await a.init_gemini(model);
         if(g.success){S.gemini=true;S.model=g.model;updateUI();enableChat();
           _connectInBackground();}
-      }catch(e){console.error('init_gemini:',e)}
+      }catch(e){console.error('init_gemini:',e);updateUI()}
       try{await loadHistory()}catch(e){}
-    }else{err.textContent=r.error||'Invalid API key';err.style.display='block';btn.disabled=false;btn.textContent='Save and continue'}
-  }catch(e){err.textContent='Connection error: '+e.message;err.style.display='block';btn.disabled=false;btn.textContent='Save and continue'}
+    }else{
+      err.textContent=r.error||'Failed to save';err.style.display='block';
+      btn.disabled=false;btn.textContent='Save and continue';
+    }
+  }catch(e){
+    err.textContent='Error: '+e.message;err.style.display='block';
+    btn.disabled=false;btn.textContent='Save and continue';
+  }
 }
 
 /* ═══ Chat ═══ */
@@ -787,9 +802,13 @@ async function changeKeyDlg(){closeSettings();document.getElementById('chgKey').
 function closeChgKey(){document.getElementById('chgOverlay').classList.remove('visible')}
 async function saveChgKey(){const a=api(),key=document.getElementById('chgKey').value.trim(),err=document.getElementById('chgErr'),btn=document.getElementById('chgBtn');
   if(!key){err.textContent='Enter an API key';err.style.display='block';return}btn.disabled=true;err.style.display='none';
-  const r=await a.validate_and_save_key(key);
-  if(r.valid){closeChgKey();await a.init_gemini(S.model);try{S=await a.get_app_state()}catch(e){}updateUI();enableChat()}
-  else{err.textContent=r.error||'Invalid key';err.style.display='block';btn.disabled=false}}
+  try{
+    const r=await a.save_key_direct(key);
+    if(r.saved){closeChgKey();S.hasKey=true;
+      try{await a.init_gemini(S.model);S.gemini=true}catch(e){}
+      try{S=await a.get_app_state()}catch(e){}updateUI();enableChat()}
+    else{err.textContent=r.error||'Failed to save';err.style.display='block';btn.disabled=false}
+  }catch(e){err.textContent='Error: '+e.message;err.style.display='block';btn.disabled=false}}
 async function removeKey(){if(!confirm('Remove saved API key? You will need to enter it again.'))return;const a=api();await a.remove_key();S.hasKey=false;S.gemini=false;updateUI();closeSettings();showOnb()}
 
 /* ═══ Tools Sheet ═══ */
