@@ -288,11 +288,6 @@ footer.sb{height:var(--statusbar);background:var(--panel);border-top:1px solid v
       <span class="status-chip" id="pillAI"></span>
       <span class="status-chip" id="pillMCP"></span>
     </div>
-    <button class="mdl-btn" id="modelBtn" onclick="toggleModelPop()" aria-label="Select model">
-      <span id="modelBtnLabel">Select model</span>
-      <span class="icon" style="--is:12px" id="mdlChev"></span>
-    </button>
-    <div class="popover" id="modelPop"></div>
     <button class="ib" onclick="openSettings()" aria-label="Settings" id="settingsBtn"></button>
   </div>
 </header>
@@ -371,16 +366,12 @@ footer.sb{height:var(--statusbar);background:var(--panel);border-top:1px solid v
 <div class="overlay" id="onbOverlay">
   <div class="dialog" role="dialog" aria-label="Set up Gemini">
     <div class="dialog-title">Set up Gemini</div>
-    <div class="dialog-desc">Add your Gemini API key and choose a default model to get started.</div>
+    <div class="dialog-desc">Add your Gemini API key to get started. Using Gemini 2.5 Flash.</div>
     <div class="field">
       <label for="onbKey">Gemini API Key</label>
       <input type="password" id="onbKey" placeholder="AIza..." autocomplete="off">
       <div class="field-hint">Get a free key at <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">aistudio.google.com</a></div>
       <div class="field-error" id="onbErr" style="display:none"></div>
-    </div>
-    <div class="field">
-      <label for="onbModel">Model</label>
-      <select id="onbModel"></select>
     </div>
     <button class="btn btn-p btn-block" id="onbBtn" onclick="onbSave()">Save and continue</button>
   </div>
@@ -399,10 +390,6 @@ footer.sb{height:var(--statusbar);background:var(--panel);border-top:1px solid v
       <button class="btn btn-g btn-sm" onclick="changeKeyDlg()">Change</button>
       <button class="btn btn-d btn-sm" id="setRemBtn" onclick="removeKey()" style="display:none">Remove</button>
     </div>
-  </div>
-  <div class="field">
-    <label for="setModel">Default Model</label>
-    <select id="setModel" onchange="changeModelSettings()"></select>
   </div>
   <div class="sec-label">MCP Server</div>
   <div class="field">
@@ -564,11 +551,7 @@ function tl(name){return TM[name]?TM[name].l:name.replace(/_/g,' ').replace(/\b\
 function td(name){return TM[name]?TM[name].d:''}
 
 /* ═══ State ═══ */
-let S={hasKey:false,gemini:false,mcp:false,model:'',mcpOn:false,presets:[
-  {id:"gemini-2.5-flash",label:"Gemini 2.5 Flash",description:"Fast and capable for build analysis",badge:"Recommended"},
-  {id:"gemini-2.5-flash-lite-preview-06-2025",label:"Gemini 2.5 Flash-Lite",description:"Low latency for quick questions",badge:"Fastest"},
-  {id:"gemini-2.0-flash",label:"Gemini 2.0 Flash",description:"Compatible fallback",badge:"Legacy"}
-],servers:[],tools:null,allTools:[],srvSt:{},activeConvId:null,dataDir:'',tradeAuth:{connected:false,masked:''}};
+let S={hasKey:false,gemini:false,mcp:false,model:'gemini-2.5-flash',mcpOn:false,presets:[],servers:[],tools:null,allTools:[],srvSt:{},activeConvId:null,dataDir:'',tradeAuth:{connected:false,masked:''}};
 let busy=false;
 let _sidebarOpen=false;
 let _convList=[];
@@ -654,9 +637,9 @@ function initIcons(){
 }
 
 /* ═══ Onboarding ═══ */
-function showOnb(){document.getElementById('onbOverlay').classList.add('visible');populateSelect(document.getElementById('onbModel'),S.presets,S.model)}
+function showOnb(){document.getElementById('onbOverlay').classList.add('visible')}
 async function onbSave(){
-  const a=api(),key=document.getElementById('onbKey').value.trim(),model=document.getElementById('onbModel').value;
+  const a=api(),key=document.getElementById('onbKey').value.trim();
   const btn=document.getElementById('onbBtn'),err=document.getElementById('onbErr');
   if(!a){err.textContent='App not ready yet, please wait...';err.style.display='block';return}
   if(!key){err.textContent='Please enter an API key';err.style.display='block';return}
@@ -670,9 +653,8 @@ async function onbSave(){
       updateUI();
       // Try to connect in background
       try{
-        const g=await a.init_gemini(model);
-        if(g.success){S.gemini=true;S.model=g.model;updateUI();enableChat();
-          _connectInBackground();}
+        const g=await a.init_gemini('gemini-2.5-flash');
+        if(g.success){S.gemini=true;updateUI();enableChat();}
       }catch(e){console.error('init_gemini:',e);updateUI()}
       try{await loadHistory()}catch(e){}
     }else{
@@ -733,18 +715,9 @@ function handleKey(e){if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();sendMe
 function autoResize(el){el.style.height='auto';el.style.height=Math.min(el.scrollHeight,120)+'px'}
 
 /* ═══ Model ═══ */
-function populateSelects(){populateSelect(document.getElementById('onbModel'),S.presets,S.model);populateSelect(document.getElementById('setModel'),S.presets,S.model);updModelBtn()}
-function populateSelect(el,presets,sel){el.innerHTML='';presets.forEach(p=>{const o=document.createElement('option');o.value=p.id;o.textContent=p.label+(p.badge?' — '+p.badge:'');if(p.id===sel)o.selected=true;el.appendChild(o)})}
-function updModelBtn(){const p=S.presets.find(p=>p.id===S.model);document.getElementById('modelBtnLabel').textContent=p?p.label:S.model||'Select model'}
-function toggleModelPop(){
-  const p=document.getElementById('modelPop');if(p.classList.contains('visible')){p.classList.remove('visible');return}
-  p.innerHTML='';S.presets.forEach(pr=>{const o=document.createElement('div');o.className='mdl-opt'+(pr.id===S.model?' sel':'');
-    o.innerHTML=`<div class="mdl-opt-name">${pr.badge?'<span class="mdl-badge">'+pr.badge+'</span>':''}${pr.label}</div><div class="mdl-opt-desc">${pr.description}</div>`;
-    o.addEventListener('click',()=>selModel(pr.id));p.appendChild(o)});p.classList.add('visible');
-}
-async function selModel(id){document.getElementById('modelPop').classList.remove('visible');if(id===S.model)return;const a=api(),r=await a.change_model(id);if(r.success){S.model=id;updModelBtn();document.getElementById('setModel').value=id}}
-function changeModelSettings(){const id=document.getElementById('setModel').value;if(id&&id!==S.model)selModel(id)}
-document.addEventListener('click',e=>{const w=document.getElementById('modelBtn');if(w&&!w.contains(e.target))document.getElementById('modelPop').classList.remove('visible')});
+function populateSelects(){}
+function populateSelect(el,presets,sel){}
+function updModelBtn(){}
 
 /* ═══ UI Update ═══ */
 function updateUI(){updPills();updSB();updSettings();updateTradeUI()}
